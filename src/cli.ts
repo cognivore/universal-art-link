@@ -6,6 +6,7 @@ import { runDevCommand } from './commands/dev.js';
 import { runBuildCommand } from './commands/build.js';
 import { runPackageCommand } from './commands/package.js';
 import { runDeployCommand } from './commands/deploy.js';
+import { runEndpointCommand } from './commands/endpoint.js';
 
 const require = createRequire(import.meta.url);
 const { version, description } = require('../package.json') as { version: string; description: string };
@@ -42,6 +43,22 @@ program.command('package').description('Zip the built site into dist/site-*.zip'
 program.command('deploy').description('POST the packaged site to configured endpoint').action(async () => {
   await runDeployCommand();
 });
+
+program
+  .command('endpoint')
+  .description('Run a minimal remote deploy endpoint')
+  .option('-p, --port <port>', 'Port to listen on', (value) => Number.parseInt(value, 10))
+  .option('-H, --host <host>', 'Host to bind to (default 0.0.0.0)')
+  .option('-s, --secret <secret>', 'Shared secret used for auth')
+  .option('-t, --target <path>', 'Directory where extracted files should be written')
+  .action(async (opts) => {
+    await runEndpointCommand({
+      port: opts.port,
+      host: opts.host,
+      secret: opts.secret,
+      target: opts.target,
+    });
+  });
 
 program.parseAsync(process.argv);
 

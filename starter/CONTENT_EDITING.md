@@ -62,5 +62,12 @@ universal-art-link package   # create dist/site-YYYYMMDD-HHMM.zip
 universal-art-link deploy    # POST bundle to configured endpoint
 ```
 
+### One-click deploy panel
+
+- Run `universal-art-link dev` and open `http://localhost:4173/admin/`.
+- Paste the remote URL + shared secret from your host, then hit **Connect**.
+- When you're happy with the site, click **Deploy to …** — the panel builds + uploads for you and shows live status logs.
+- Disconnect to remove the saved secret (stored only in `.ual/connection.json`).
+
 If CLI commands fail, read the error message—it points to the file/field that needs attention.
 

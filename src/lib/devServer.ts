@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import http from 'node:http';
 import path from 'node:path';
 import { Logger } from './logger.js';
+import { AdminService } from './adminService.js';
 
 const mimeMap: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -23,6 +24,7 @@ type DevServerOptions = {
   readonly distDir: string;
   readonly port: number;
   readonly logger: Logger;
+  readonly adminService: AdminService;
 };
 
 export type DevServer = {
@@ -47,6 +49,88 @@ const injectLiveReload = (html: string): string => {
     return html.replace('</body>', `${snippet}</body>`);
   }
   return `${html}${snippet}`;
+};
+
+const respondJson = (res: http.ServerResponse<http.IncomingMessage>, status: number, payload: unknown): void => {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.end(JSON.stringify(payload));
+};
+
+const readJsonBody = async (req: http.IncomingMessage): Promise<Record<string, unknown>> =>
+  new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    const maxBytes = 1 * 1024 * 1024;
+    req.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+      total += chunk.length;
+      if (total > maxBytes) {
+        req.destroy();
+        reject(new Error('Payload too large'));
+      }
+    });
+    req.on('end', () => {
+      if (chunks.length === 0) {
+        resolve({});
+        return;
+      }
+      try {
+        const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
+        resolve(parsed);
+      } catch (error) {
+        reject(error);
+      }
+    });
+    req.on('error', reject);
+  });
+
+const handleAdminApi = async (
+  req: http.IncomingMessage,
+  res: http.ServerResponse<http.IncomingMessage>,
+  adminService: AdminService,
+): Promise<boolean> => {
+  const requestUrl = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  if (!requestUrl.pathname.startsWith('/__ual/api')) {
+    return false;
+  }
+
+  try {
+    if (requestUrl.pathname === '/__ual/api/state' && req.method === 'GET') {
+      const state = await adminService.getState();
+      respondJson(res, 200, { apiAvailable: true, ...state });
+      return true;
+    }
+
+    if (requestUrl.pathname === '/__ual/api/connect' && req.method === 'POST') {
+      const body = await readJsonBody(req);
+      const connection = await adminService.connect({
+        baseUrl: String(body.baseUrl ?? ''),
+        secret: String(body.secret ?? ''),
+      });
+      respondJson(res, 200, { connection });
+      return true;
+    }
+
+    if (requestUrl.pathname === '/__ual/api/disconnect' && req.method === 'POST') {
+      await adminService.disconnect();
+      respondJson(res, 200, { status: 'disconnected' });
+      return true;
+    }
+
+    if (requestUrl.pathname === '/__ual/api/deploy' && req.method === 'POST') {
+      const result = await adminService.deploy();
+      respondJson(res, 200, { status: 'success', ...result });
+      return true;
+    }
+
+    respondJson(res, 404, { message: 'Unknown admin endpoint' });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Request failed';
+    respondJson(res, 400, { message });
+    return true;
+  }
 };
 
 const serveStatic = async (
@@ -79,7 +163,7 @@ const serveStatic = async (
   stream.pipe(res);
 };
 
-export const startDevServer = ({ distDir, port, logger }: DevServerOptions): DevServer => {
+export const startDevServer = ({ distDir, port, logger, adminService }: DevServerOptions): DevServer => {
   const clients = new Set<LiveReloadClient>();
 
   const server = http.createServer(async (req, res) => {
@@ -93,6 +177,19 @@ export const startDevServer = ({ distDir, port, logger }: DevServerOptions): Dev
       clients.add(res);
       req.on('close', () => clients.delete(res));
       return;
+    }
+
+    if ((req.url ?? '').startsWith('/__ual/api')) {
+      try {
+        const handled = await handleAdminApi(req, res, adminService);
+        if (handled) {
+          return;
+        }
+      } catch (error) {
+        logger.error('Admin API failed', error);
+        respondJson(res, 500, { message: 'Admin API error' });
+        return;
+      }
     }
 
     try {

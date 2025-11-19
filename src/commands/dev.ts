@@ -4,6 +4,7 @@ import { buildSite } from '../lib/build.js';
 import { log } from '../lib/logger.js';
 import { createPathConfig } from '../lib/paths.js';
 import { startDevServer } from '../lib/devServer.js';
+import { AdminService } from '../lib/adminService.js';
 
 type DevOptions = {
   readonly port?: number;
@@ -14,10 +15,18 @@ export const runDevCommand = async ({ port = 4173 }: DevOptions = {}): Promise<v
   const paths = createPathConfig(rootDir);
 
   await buildSite({ rootDir, invalidateTemplates: true });
-  const server = startDevServer({ distDir: paths.outputDir, port, logger: log });
+  const adminService = new AdminService(rootDir, log);
+  const server = startDevServer({ distDir: paths.outputDir, port, logger: log, adminService });
 
   const watcher = chokidar.watch(
-    [paths.contentDir, paths.templatesDir, paths.assetsDir, path.join(rootDir, 'templates/styles'), path.join(rootDir, 'templates/scripts')],
+    [
+      paths.contentDir,
+      paths.templatesDir,
+      paths.assetsDir,
+      paths.stylesDir,
+      paths.scriptsDir,
+      paths.adminDir,
+    ],
     { ignoreInitial: true },
   );
 

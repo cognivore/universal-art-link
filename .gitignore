@@ -24,6 +24,7 @@ Thumbs.db
 *credentials.yaml
 **/conf/deployment.rs
 priv/aws/credentials
+.ual/
 
 # Rust (legacy)
 target/
