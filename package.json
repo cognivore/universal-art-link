@@ -1,0 +1,47 @@
+{
+  "name": "universal-art-link",
+  "version": "0.1.0",
+  "description": "Local-first Cargo-style static site constructor with editorial design defaults.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "universal-art-link": "build/cli.js"
+  },
+  "scripts": {
+    "clean": "rimraf build dist",
+    "build": "tsc --project tsconfig.json",
+    "dev": "tsx src/cli.ts dev",
+    "cli": "tsx src/cli.ts",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "static-site-generator",
+    "editorial",
+    "cargo",
+    "local-first"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "archiver": "^6.0.2",
+    "chokidar": "^4.0.1",
+    "commander": "^12.1.0",
+    "fs-extra": "^11.2.0",
+    "handlebars": "^4.7.8",
+    "kleur": "^4.1.5",
+    "yaml": "^2.6.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/archiver": "^7.0.0",
+    "@types/fs-extra": "^11.0.4",
+    "@types/handlebars": "^4.1.0",
+    "@types/node": "^22.7.4",
+    "rimraf": "^5.0.10",
+    "ts-node": "^10.9.2",
+    "tslib": "^2.7.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3"
+  }
+}
+

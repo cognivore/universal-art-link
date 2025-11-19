@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{meta.title}}</title>
+    <meta name="description" content="{{meta.description}}" />
+    <link rel="canonical" href="{{meta.canonicalUrl}}" />
+    <link rel="stylesheet" href="{{assets.styles}}" />
+    <script defer src="{{assets.scripts}}"></script>
+    <style>
+      :root {
+        {{themeVars}}
+      }
+    </style>
+  </head>
+  <body class="ual-body layout-project">
+    <div class="project-shell">
+      <aside class="project-nav">
+        <a class="logo" href="{{assets.base}}/">{{site.siteTitle}}</a>
+        <nav class="site-nav site-nav--vertical">
+          {{#each navigation}}
+          <a href="{{href}}" class="nav-link {{#if active}}is-active{{/if}}">{{label}}</a>
+          {{/each}}
+        </nav>
+        <div class="project-meta">
+          {{#each socialLinks}}
+          <a href="{{href}}" target="_blank" rel="noreferrer">{{label}}</a>
+          {{/each}}
+        </div>
+      </aside>
+      <main class="site-main project-main">
+        {{#each sections}}
+          {{{this}}}
+        {{/each}}
+      </main>
+    </div>
+  </body>
+</html>
+

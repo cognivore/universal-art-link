@@ -1,0 +1,16 @@
+slug: "/contact"
+title: Contact
+layout: default
+sections:
+  - type: hero
+    kicker: "Availability"
+    title: "Currently booking for Feb – Jun 2026 launches."
+    subtitle: "Share a brief or drop a line about residencies, runway companions, editorial experiments, or hybrid installations."
+    primaryCta:
+      label: "Email the studio"
+      href: "mailto:hello@atelier-meridian.example"
+  - type: contact
+    title: "Let’s begin"
+    body: "We begin each partnership with a half-day workshop to align typography, palette, and narrative arcs. Expect a response within 72 hours."
+    email: "hello@atelier-meridian.example"
+

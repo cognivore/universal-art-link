@@ -1,0 +1,36 @@
+# Nix specific ignores
+.direnv/
+result/
+
+# Node / TypeScript
+node_modules/
+build/
+dist/
+*.tsbuildinfo
+pnpm-lock.yaml
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+*credentials.yaml
+**/conf/deployment.rs
+priv/aws/credentials
+
+# Rust (legacy)
+target/
+
+# Database (legacy)
+db/*
+!db/dirty-sync.sh
+
+# Infra (legacy)
+infra/hostinger/priv/system-manager/result

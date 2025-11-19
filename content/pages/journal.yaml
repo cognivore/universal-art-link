@@ -1,0 +1,20 @@
+slug: "/journal"
+title: Field Notes
+layout: journal
+sections:
+  - type: hero
+    kicker: "Journal"
+    title: "Production notes, sketches, and textile research."
+    subtitle: "An ongoing log of palette experiments, typography tests, and cataloguing of physical references."
+  - type: list-section
+    title: "Entries"
+    items:
+      - label: "Vol. 06 — Silk diffraction studies"
+        detail: "June 2025"
+      - label: "Vol. 05 — Letterpress grid prototyping"
+        detail: "April 2025"
+      - label: "Vol. 04 — Gestural navigation on mobile"
+        detail: "January 2025"
+      - label: "Vol. 03 — Notes on serif pairings"
+        detail: "November 2024"
+
