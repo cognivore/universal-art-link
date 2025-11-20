@@ -16,8 +16,58 @@ const UAL_EDITOR = (() => {
     schema: null,
     schemaMap: new Map(),
     content: null,
-    selectedPage: 0
+    selectedPage: 0,
+    previewBase: (typeof window !== 'undefined' && window.UAL_EDITOR_CONFIG?.previewBase) || 'http://localhost:4173',
+    rebuildPromise: null,
+    rebuildResolve: null
   };
+
+  const waitForRebuild = () => {
+    if (state.rebuildPromise) {
+      return state.rebuildPromise;
+    }
+    state.rebuildPromise = new Promise((resolve) => {
+      state.rebuildResolve = resolve;
+    });
+    const timeout = setTimeout(() => {
+      if (state.rebuildResolve) {
+        state.rebuildResolve();
+        state.rebuildPromise = null;
+        state.rebuildResolve = null;
+      }
+    }, 5000);
+    state.rebuildPromise.finally(() => clearTimeout(timeout));
+    return state.rebuildPromise;
+  };
+
+  const handleRebuildComplete = () => {
+    if (state.rebuildResolve) {
+      state.rebuildResolve();
+      state.rebuildPromise = null;
+      state.rebuildResolve = null;
+    }
+  };
+
+  // Listen to dev server rebuild notifications
+  (() => {
+    try {
+      if (typeof EventSource === 'undefined') return;
+      const previewBase = state.previewBase ?? 'http://localhost:4173';
+      const baseUrl = previewBase.endsWith('/') ? previewBase.slice(0, -1) : previewBase;
+      const liveReloadUrl = `${baseUrl}/__ual/live`;
+      const liveSource = new EventSource(liveReloadUrl);
+      liveSource.addEventListener('message', (event) => {
+        if (event.data === 'reload') {
+          handleRebuildComplete();
+        }
+      });
+      liveSource.addEventListener('error', () => {
+        // Silently handle EventSource errors
+      });
+    } catch (error) {
+      // EventSource not supported or failed to initialize
+    }
+  })();
 
   const escapeHtml = (value = '') =>
     String(value)
@@ -217,7 +267,10 @@ const UAL_EDITOR = (() => {
       }
       state.saving = false;
       state.dirty = false;
-      setStatus('Content saved', 'success');
+      setStatus('Content saved, rebuilding site…', 'muted');
+      // Wait for the dev server rebuild to complete
+      await waitForRebuild();
+      setStatus('Site rebuilt successfully', 'success');
     } catch (error) {
       state.saving = false;
       setStatus(error instanceof Error ? error.message : String(error), 'error');

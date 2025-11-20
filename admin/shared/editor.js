@@ -20,8 +20,56 @@ const UAL_EDITOR = (() => {
     previewVisible: true,
     previewDevice: 'desktop',
     previewVersion: Date.now(),
-    previewBase: config.previewBase ?? window.location.origin
+    previewBase: config.previewBase ?? window.location.origin,
+    rebuildPromise: null,
+    rebuildResolve: null
   };
+
+  const waitForRebuild = () => {
+    if (state.rebuildPromise) {
+      return state.rebuildPromise;
+    }
+    state.rebuildPromise = new Promise((resolve) => {
+      state.rebuildResolve = resolve;
+    });
+    const timeout = setTimeout(() => {
+      if (state.rebuildResolve) {
+        state.rebuildResolve();
+        state.rebuildPromise = null;
+        state.rebuildResolve = null;
+      }
+    }, 5000);
+    state.rebuildPromise.finally(() => clearTimeout(timeout));
+    return state.rebuildPromise;
+  };
+
+  const handleRebuildComplete = () => {
+    if (state.rebuildResolve) {
+      state.rebuildResolve();
+      state.rebuildPromise = null;
+      state.rebuildResolve = null;
+    }
+  };
+
+  // Listen to dev server rebuild notifications
+  (() => {
+    try {
+      const previewBase = state.previewBase ?? window.location.origin;
+      const baseUrl = previewBase.endsWith('/') ? previewBase.slice(0, -1) : previewBase;
+      const liveReloadUrl = `${baseUrl}/__ual/live`;
+      const liveSource = new EventSource(liveReloadUrl);
+      liveSource.addEventListener('message', (event) => {
+        if (event.data === 'reload') {
+          handleRebuildComplete();
+        }
+      });
+      liveSource.addEventListener('error', () => {
+        // Silently handle EventSource errors (server may not be running)
+      });
+    } catch (error) {
+      // EventSource not supported or failed to initialize
+    }
+  })();
 
   const escapeHtml = (value = '') =>
     String(value)
@@ -252,9 +300,12 @@ const UAL_EDITOR = (() => {
       }
       state.saving = false;
       state.dirty = false;
-      setStatus('Content saved', 'success');
+      setStatus('Content saved, rebuilding site…', 'muted');
+      // Wait for the dev server rebuild to complete before refreshing preview
+      await waitForRebuild();
       state.previewVersion = Date.now();
       syncPreviewFrame(true);
+      setStatus('Preview updated', 'success');
     } catch (error) {
       state.saving = false;
       setStatus(error instanceof Error ? error.message : String(error), 'error');

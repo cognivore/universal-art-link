@@ -4,9 +4,9 @@ baseUrl: https://atelier-meridian.example
 favicon: /assets/favicon.svg
 theme:
   mode: light
-  background: "#66fcff"
+  background: "#85fdff"
   foreground: "#ff0000"
-  accent: "#4d6fff"
+  accent: "#4d6dff"
   muted: "#6b6b6b"
   borderSubtle: rgba(0,0,0,0.12)
   typography:

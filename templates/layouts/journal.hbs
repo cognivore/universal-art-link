@@ -16,14 +16,7 @@
   </head>
   <body class="ual-body layout-journal">
     <div class="journal-shell">
-      <header class="site-header journal-header">
-        <a class="logo" href="{{assets.base}}/">{{site.siteTitle}}</a>
-        <nav class="site-nav">
-          {{#each navigation}}
-          <a href="{{href}}" class="nav-link {{#if active}}is-active{{/if}}">{{label}}</a>
-          {{/each}}
-        </nav>
-      </header>
+      {{> site-header}}
       <main class="site-main journal-main">
         {{#each sections}}
           {{{this}}}

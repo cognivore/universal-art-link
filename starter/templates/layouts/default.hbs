@@ -19,15 +19,7 @@
   </head>
   <body class="ual-body" data-density="{{site.theme.density}}" data-mode="{{site.theme.mode}}">
     <div class="page-shell">
-      <header class="site-header">
-        <a class="logo" href="{{assets.base}}/">{{site.siteTitle}}</a>
-        <nav class="site-nav">
-          {{#each navigation}}
-          <a href="{{href}}" class="nav-link {{#if active}}is-active{{/if}}">{{label}}</a>
-          {{/each}}
-        </nav>
-        <button class="nav-toggle" data-nav-toggle>Menu</button>
-      </header>
+      {{> site-header}}
       <main class="site-main">
         {{#each sections}}
           {{{this}}}

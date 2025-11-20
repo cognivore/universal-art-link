@@ -80,6 +80,12 @@ a {
   z-index: 10;
 }
 
+.site-header__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
 .site-header--stacked {
   flex-direction: column;
   align-items: flex-start;
@@ -214,14 +220,27 @@ a {
   color: var(--accent);
 }
 
+.projects-grid {
+  padding-top: var(--space-xl);
+}
+
 .projects-grid__items {
   display: grid;
   gap: var(--space-md);
+  grid-template-columns: 1fr;
 }
 
-@media (min-width: var(--bp-md)) {
+@media (min-width: var(--bp-lg)) {
   .projects-grid__items {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .project-card--wide {
+    grid-column: span 2;
+  }
+
+  .project-card--tall {
+    grid-row: span 2;
   }
 }
 
@@ -247,21 +266,6 @@ a {
   font-size: 1.5rem;
 }
 
-.project-card--wide {
-  grid-column: span 2;
-}
-
-.project-card--tall {
-  grid-row: span 2;
-}
-
-@media (max-width: var(--bp-md)) {
-  .project-card--wide,
-  .project-card--tall {
-    grid-column: span 1;
-    grid-row: span 1;
-  }
-}
 
 .micro-label {
   font-size: 0.75rem;
@@ -370,35 +374,48 @@ a {
   font-size: 0.78rem;
 }
 
-.layout-project {
+.project-layout {
   display: grid;
   grid-template-columns: 280px 1fr;
   gap: var(--space-lg);
-}
-
-@media (max-width: var(--bp-md)) {
-  .layout-project {
-    grid-template-columns: 1fr;
-  }
-
-  .project-nav {
-    position: sticky;
-    top: 0;
-    z-index: 5;
-    background: var(--bg);
-    padding-bottom: var(--space-sm);
-  }
+  margin-top: var(--space-lg);
 }
 
 .project-nav {
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  gap: var(--space-lg);
+  gap: var(--space-md);
+  padding-right: var(--space-lg);
+  position: sticky;
+  top: calc(var(--space-lg) + 2rem);
 }
 
-.journal-header {
-  border-bottom: none;
+.project-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.project-meta a {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+}
+
+@media (max-width: var(--bp-md)) {
+  .project-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .project-nav {
+    position: static;
+    border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-right: 0;
+    padding-bottom: var(--space-sm);
+    margin-bottom: var(--space-md);
+  }
 }
 
 .layout-index .site-main {

@@ -16,17 +16,7 @@
   </head>
   <body class="ual-body layout-index" data-density="{{site.theme.density}}">
     <div class="page-shell">
-      <header class="site-header site-header--stacked">
-        <div>
-          <a class="logo" href="{{assets.base}}/">{{site.siteTitle}}</a>
-          <p class="micro-label muted">{{site.siteDescription}}</p>
-        </div>
-        <nav class="site-nav site-nav--stacked">
-          {{#each navigation}}
-          <a href="{{href}}" class="nav-link {{#if active}}is-active{{/if}}">{{label}}</a>
-          {{/each}}
-        </nav>
-      </header>
+      {{> site-header}}
       <main class="site-main">
         {{#each sections}}
           {{{this}}}
