@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UAL Admin Panel — Local</title>
+    <link rel="stylesheet" href="/shared/editor.css" />
+    <style>
+      :root {
+        --bg: #0f0f10;
+        --fg: #f6f6f6;
+        --muted: #9aa0a6;
+        --accent: #3a86ff;
+        --surface: #151517;
+        --border: #1f1f21;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        font-family: 'Inter', 'SF Pro Display', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      code {
+        font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, ui-monospace, monospace;
+      }
+      main {
+        min-height: 100%;
+      }
+      .wrap {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 2.5rem 1.25rem 4rem;
+      }
+      h1 {
+        font-size: clamp(1.8rem, 3vw, 2.6rem);
+        margin: 0 0 1rem;
+      }
+      p {
+        line-height: 1.5;
+      }
+      section {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.4rem;
+        margin: 1rem 0 1.4rem;
+      }
+      label {
+        display: block;
+        font-size: 0.85rem;
+        color: var(--muted);
+        margin-bottom: 0.35rem;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+      input[type='text'],
+      input[type='password'] {
+        width: 100%;
+        padding: 0.8rem 0.9rem;
+        border-radius: 8px;
+        border: 1px solid #252529;
+        background: #0b0b0c;
+        color: var(--fg);
+        font-size: 1rem;
+      }
+      button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.85rem 1.4rem;
+        border-radius: 10px;
+        border: none;
+        font-weight: 600;
+        cursor: pointer;
+        background: var(--accent);
+        color: #fff;
+        transition: filter 150ms ease;
+      }
+      button[disabled] {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      button.secondary {
+        background: #24262b;
+        color: #e3e3e3;
+        border: 1px solid #2d3038;
+      }
+      .row {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+      .row > .col {
+        flex: 1 1 220px;
+      }
+      .status {
+        font-size: 0.95rem;
+        color: var(--muted);
+        margin-top: 0.6rem;
+      }
+      .status.ok {
+        color: #3ddc97;
+      }
+      .status.err {
+        color: #ff7b72;
+      }
+      .hint {
+        font-size: 0.85rem;
+        color: var(--muted);
+        margin-top: 0.4rem;
+      }
+      .headline {
+        font-weight: 600;
+        margin-bottom: 0.3rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="wrap">
+        <header>
+          <p class="hint">Universal Artistic Link · Local-first deployment</p>
+          <h1>Connect. Edit. Deploy.</h1>
+          <p>
+            Paste the remote deploy URL + secret once. We save it locally inside <code>.ual/connection.json</code>. After that
+            you only press <strong>Deploy</strong>.
+          </p>
+        </header>
+
+        <section>
+          <div class="row">
+            <div class="col">
+              <label for="endpoint">Deploy endpoint URL</label>
+              <input id="endpoint" type="text" placeholder="https://deploy.example.com" autocomplete="url" />
+            </div>
+            <div class="col">
+              <label for="secret">Shared secret</label>
+              <input id="secret" type="password" placeholder="••••••••" autocomplete="current-password" />
+            </div>
+          </div>
+          <div class="row" style="margin-top: 1rem; align-items: center;">
+            <div class="col" style="flex: 1 1 140px;">
+              <label for="site-id">Site ID (optional)</label>
+              <input id="site-id" type="text" placeholder="default" />
+            </div>
+            <div>
+              <button id="btnConnect">Connect</button>
+            </div>
+          </div>
+          <p id="connectStatus" class="status">Not connected.</p>
+        </section>
+
+        <section>
+          <div class="row" style="align-items: center; justify-content: space-between;">
+            <div>
+              <p class="headline">Deploy</p>
+              <p class="hint">Build → package → upload zip. Nothing leaves your machine before you confirm.</p>
+            </div>
+            <div class="row" style="align-items: center; justify-content: flex-end;">
+              <button id="btnDeploy">Deploy Now</button>
+              <button id="btnDisconnect" class="secondary">Disconnect</button>
+            </div>
+          </div>
+          <p id="deployStatus" class="status"></p>
+        </section>
+        <section id="ual-editor" class="ual-editor--hidden"></section>
+      </div>
+    </main>
+
+    <script>
+      const endpointInput = document.getElementById('endpoint');
+      const secretInput = document.getElementById('secret');
+      const siteIdInput = document.getElementById('site-id');
+      const connectBtn = document.getElementById('btnConnect');
+      const deployBtn = document.getElementById('btnDeploy');
+      const disconnectBtn = document.getElementById('btnDisconnect');
+      const connectStatus = document.getElementById('connectStatus');
+      const deployStatus = document.getElementById('deployStatus');
+
+      const setStatus = (el, message, variant = '') => {
+        el.textContent = message;
+        el.classList.remove('ok', 'err');
+        if (variant) {
+          el.classList.add(variant);
+        }
+      };
+
+      const refreshStatus = async () => {
+        try {
+          const res = await fetch('/api/status');
+          const payload = await res.json();
+          if (!payload.ok) throw new Error('Status unavailable');
+          if (payload.connected) {
+            setStatus(
+              connectStatus,
+              `Connected to ${payload.config.endpoint} (${payload.config.siteId || 'default'})`,
+              'ok',
+            );
+          } else {
+            setStatus(connectStatus, 'Not connected.');
+          }
+        } catch (error) {
+          setStatus(connectStatus, `Status error: ${error?.message || error}`, 'err');
+        }
+      };
+
+      const connect = async () => {
+        const endpoint = endpointInput.value.trim();
+        const secret = secretInput.value.trim();
+        const siteId = siteIdInput.value.trim() || 'default';
+        if (!endpoint || !secret) {
+          setStatus(connectStatus, 'Enter both endpoint and secret.', 'err');
+          return;
+        }
+        setStatus(connectStatus, 'Connecting…');
+        connectBtn.disabled = true;
+        try {
+          const res = await fetch('/api/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint, secret, siteId }),
+          });
+          const payload = await res.json();
+          if (!payload.ok) {
+            throw new Error(payload.error || payload.text || payload.status || 'Failed to connect');
+          }
+          setStatus(connectStatus, `Connected to ${payload.endpoint}`, 'ok');
+          localStorage.setItem('ual:deploy-endpoint', endpoint);
+        } catch (error) {
+          setStatus(connectStatus, `Failed: ${error?.message || error}`, 'err');
+        } finally {
+          connectBtn.disabled = false;
+        }
+      };
+
+      const deploy = async () => {
+        deployBtn.disabled = true;
+        setStatus(deployStatus, 'Building and uploading…');
+        try {
+          const res = await fetch('/api/deploy', { method: 'POST' });
+          const payload = await res.json();
+          if (!payload.ok) throw new Error(payload.error || payload.response || payload.status || 'Deploy failed');
+          setStatus(deployStatus, payload.message || 'Deployed.', 'ok');
+        } catch (error) {
+          setStatus(deployStatus, `Failed: ${error?.message || error}`, 'err');
+        } finally {
+          deployBtn.disabled = false;
+        }
+      };
+
+      const disconnect = async () => {
+        try {
+          await fetch('/api/disconnect', { method: 'POST' });
+          setStatus(connectStatus, 'Disconnected.');
+        } catch (error) {
+          setStatus(connectStatus, `Failed to disconnect: ${error?.message || error}`, 'err');
+        }
+      };
+
+      connectBtn.addEventListener('click', () => {
+        void connect();
+      });
+      deployBtn.addEventListener('click', () => {
+        void deploy();
+      });
+      disconnectBtn.addEventListener('click', () => {
+        void disconnect();
+      });
+
+      const savedEndpoint = localStorage.getItem('ual:deploy-endpoint');
+      if (savedEndpoint) {
+        endpointInput.value = savedEndpoint;
+      }
+      void refreshStatus();
+    </script>
+    <script>
+      window.UAL_EDITOR_CONFIG = { apiBase: '/api', mountId: 'ual-editor' };
+    </script>
+    <script type="module" src="/shared/editor.js"></script>
+  </body>
+</html>
+

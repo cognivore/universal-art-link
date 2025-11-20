@@ -16,7 +16,7 @@ export const runDevCommand = async ({ port = 4173 }: DevOptions = {}): Promise<v
 
   await buildSite({ rootDir, invalidateTemplates: true });
   const adminService = new AdminService(rootDir, log);
-  const server = startDevServer({ distDir: paths.outputDir, port, logger: log, adminService });
+  const server = startDevServer({ distDir: paths.outputDir, port, logger: log, adminService, paths });
 
   const watcher = chokidar.watch(
     [
@@ -26,6 +26,7 @@ export const runDevCommand = async ({ port = 4173 }: DevOptions = {}): Promise<v
       paths.stylesDir,
       paths.scriptsDir,
       paths.adminDir,
+      paths.adminSharedDir,
     ],
     { ignoreInitial: true },
   );

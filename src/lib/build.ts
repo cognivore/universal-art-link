@@ -198,6 +198,7 @@ export const buildSite = async ({ rootDir, outDir, invalidateTemplates }: BuildO
   await copyIfExists(paths.stylesDir, path.join(paths.outputDir, 'styles'));
   await copyIfExists(paths.scriptsDir, path.join(paths.outputDir, 'scripts'));
   await copyIfExists(paths.adminDir, path.join(paths.outputDir, 'admin'));
+  await copyIfExists(paths.adminSharedDir, path.join(paths.outputDir, 'admin', 'shared'));
 
   return { pages: rendered.length, outputDir: paths.outputDir };
 };

@@ -11,6 +11,7 @@ export type PathConfig = {
   readonly scriptsDir: string;
   readonly assetsDir: string;
   readonly adminDir: string;
+  readonly adminSharedDir: string;
   readonly internalDir: string;
   readonly outputDir: string;
 };
@@ -28,7 +29,8 @@ export const createPathConfig = (rootDir: string, outputDir = 'dist'): PathConfi
     stylesDir: resolve('templates/styles'),
     scriptsDir: resolve('templates/scripts'),
     assetsDir: resolve('assets'),
-    adminDir: resolve('admin'),
+    adminDir: resolve('admin/dev'),
+    adminSharedDir: resolve('admin/shared'),
     internalDir: resolve('.ual'),
     outputDir: resolve(outputDir),
   };

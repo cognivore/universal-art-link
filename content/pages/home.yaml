@@ -1,76 +1,75 @@
-slug: "/"
+slug: /
 title: Atelier Meridian
-description: "Cargo-style high fashion art direction for future-forward studios."
+description: Cargo-style high fashion art direction for future-forward studios.
 layout: default
 sections:
   - type: hero
-    eyebrow: "Transmedia practice"
-    kicker: "Atelier Meridian"
-    title: "Editorial-grade digital narratives for ambitious cultural work."
-    subtitle: "We choreograph typography, motion, and imagery into precise compositions—delivering tactile online spaces for galleries, collectives, and couture studios."
-    body: "Local-first builder prototype showcasing a Cargo-style editorial stack."
+    eyebrow: Transmedia practice
+    kicker: Atelier Meridian
+    title: Editorial-grade digital narratives for ambitious cultural work.
+    subtitle: We choreograph typography, motion, and imagery into precise compositions—delivering tactile online spaces for galleries, collectives, and couture studios.
+    body: Local-first builder prototype showcasing a Cargo-style editorial stack.
     media:
-      src: "/assets/hero-still.svg"
-      alt: "Collage of typography and textiles"
+      src: /assets/hero-still.svg
+      alt: Collage of typography and textiles
       focalPoint: center
     primaryCta:
-      label: "View Work"
-      href: "/work"
+      label: View Work
+      href: /work
     secondaryCta:
-      label: "Journal Notes"
-      href: "/journal"
+      label: Journal Notes
+      href: /journal
   - type: projects-grid
-    title: "Recent work"
-    intro: "Each commission is built as a modular editorial system—responsive without diluting the composition."
+    title: Recent work
+    intro: Each commission is built as a modular editorial system—responsive without diluting the composition.
     projects:
-      - title: "Orbit Season 04"
-        role: "Art Direction"
+      - title: Orbit Season 04
+        role: Art Direction
         year: "2024"
         coverImage:
-          src: "/assets/project-orbit.svg"
-          alt: "Orbit cover collage"
+          src: /assets/project-orbit.svg
+          alt: Orbit cover collage
           focalPoint: center
-        slug: "/project-orbit"
+        slug: /project-orbit
         span: wide
-      - title: "Dawn Textile Lab"
-        role: "Interactive Lookbook"
+      - title: Dawn Textile Lab
+        role: Interactive Lookbook
         year: "2023"
         coverImage:
-          src: "/assets/project-dawn.svg"
-          alt: "Textile macro photography"
-        url: "https://dawn-lab.example"
+          src: /assets/project-dawn.svg
+          alt: Textile macro photography
+        url: https://dawn-lab.example
         span: standard
-      - title: "Resonant Cartographies"
-        role: "Speculative Archive"
+      - title: Resonant Cartographies
+        role: Speculative Archive
         year: "2024"
         coverImage:
-          src: "/assets/project-resonant.svg"
-          alt: "Cartography still"
-        slug: "/project-resonant"
+          src: /assets/project-resonant.svg
+          alt: Cartography still
+        slug: /project-resonant
         span: tall
   - type: text-columns
-    title: "Studio focus"
+    title: Studio focus
     columns:
-      - label: "Approach"
-        body: "We design grid systems like choreographies—setting constraints that invite improvisation when the story demands it."
-      - label: "Research"
-        body: "Each commission begins with physical moodboards, type studies, and palette tests before any production code ships."
-      - label: "Technology"
-        body: "Local-first stacks, deterministic builds, and content schemas that empower curators to iterate without developer hand-holding."
+      - label: Approach
+        body: We design grid systems like choreographies—setting constraints that invite improvisation when the story demands it.
+      - label: Research
+        body: Each commission begins with physical moodboards, type studies, and palette tests before any production code ships.
+      - label: Technology
+        body: Local-first stacks, deterministic builds, and content schemas that empower curators to iterate without developer hand-holding.
   - type: list-section
-    title: "Selected collaborators"
+    title: Selected collaborators
     items:
-      - label: "Liminal Magazine"
-        detail: "Vol. 32 interactive dossier"
-      - label: "Orbit Media"
-        detail: "Seasonal editorial systems"
-      - label: "House Élan"
-        detail: "Digital atelier relaunch"
-      - label: "Signal Archive"
-        detail: "Experimental residency"
+      - label: Liminal Magazine
+        detail: Vol. 32 interactive dossier
+      - label: Orbit Media
+        detail: Seasonal editorial systems
+      - label: House Élan
+        detail: Digital atelier relaunch
+      - label: Signal Archive
+        detail: Experimental residency
   - type: contact
-    title: "Open for commissions"
-    body: "Let’s build a portfolio surface that feels more like a publication. Provide a brief or leave a voice note; we’ll reply within three days."
-    email: "hello@atelier-meridian.example"
-    formAction: "https://formspree.io/f/atelier"
-
+    title: Open for commissions
+    body: Let’s build a portfolio surface that feels more like a publication. Provide a brief or leave a voice note; we’ll reply within three days.
+    email: hello@atelier-meridian.example
+    formAction: https://formspree.io/f/atelier

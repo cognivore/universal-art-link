@@ -3,6 +3,9 @@ import http from 'node:http';
 import path from 'node:path';
 import { Logger } from './logger.js';
 import { AdminService } from './adminService.js';
+import { readContentSnapshot, readSchemaDefinition, writeContentSnapshot } from './contentStore.js';
+import type { ContentSnapshot } from './contentStore.js';
+import { PathConfig } from './paths.js';
 
 const mimeMap: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -25,6 +28,7 @@ type DevServerOptions = {
   readonly port: number;
   readonly logger: Logger;
   readonly adminService: AdminService;
+  readonly paths: PathConfig;
 };
 
 export type DevServer = {
@@ -89,6 +93,7 @@ const handleAdminApi = async (
   req: http.IncomingMessage,
   res: http.ServerResponse<http.IncomingMessage>,
   adminService: AdminService,
+  paths: PathConfig,
 ): Promise<boolean> => {
   const requestUrl = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   if (!requestUrl.pathname.startsWith('/__ual/api')) {
@@ -109,6 +114,19 @@ const handleAdminApi = async (
         secret: String(body.secret ?? ''),
       });
       respondJson(res, 200, { connection });
+      return true;
+    }
+
+    if (requestUrl.pathname === '/__ual/api/content' && req.method === 'GET') {
+      const [schema, content] = await Promise.all([readSchemaDefinition(paths), readContentSnapshot(paths)]);
+      respondJson(res, 200, { ok: true, schema, content });
+      return true;
+    }
+
+    if (requestUrl.pathname === '/__ual/api/content' && req.method === 'POST') {
+      const body = (await readJsonBody(req)) as ContentSnapshot;
+      await writeContentSnapshot(paths, body);
+      respondJson(res, 200, { ok: true });
       return true;
     }
 
@@ -141,13 +159,25 @@ const serveStatic = async (
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   const decoded = decodeURIComponent(url.pathname);
   const targetPath = decoded === '/' ? '/index.html' : decoded;
-  const filePath = path.join(distDir, targetPath);
+  let filePath = path.join(distDir, targetPath);
 
   const exists = await fs.pathExists(filePath);
   if (!exists) {
     res.statusCode = 404;
     res.end('Not found');
     return;
+  }
+
+  const stats = await fs.stat(filePath);
+  if (stats.isDirectory()) {
+    const indexPath = path.join(filePath, 'index.html');
+    const hasIndex = await fs.pathExists(indexPath);
+    if (!hasIndex) {
+      res.statusCode = 403;
+      res.end('Directory listing not allowed');
+      return;
+    }
+    filePath = indexPath;
   }
 
   const ext = path.extname(filePath).toLowerCase();
@@ -160,10 +190,14 @@ const serveStatic = async (
   }
 
   const stream = fs.createReadStream(filePath);
+  stream.on('error', (error) => {
+    res.statusCode = 500;
+    res.end(error instanceof Error ? error.message : 'File stream failed');
+  });
   stream.pipe(res);
 };
 
-export const startDevServer = ({ distDir, port, logger, adminService }: DevServerOptions): DevServer => {
+export const startDevServer = ({ distDir, port, logger, adminService, paths }: DevServerOptions): DevServer => {
   const clients = new Set<LiveReloadClient>();
 
   const server = http.createServer(async (req, res) => {
@@ -181,7 +215,7 @@ export const startDevServer = ({ distDir, port, logger, adminService }: DevServe
 
     if ((req.url ?? '').startsWith('/__ual/api')) {
       try {
-        const handled = await handleAdminApi(req, res, adminService);
+        const handled = await handleAdminApi(req, res, adminService, paths);
         if (handled) {
           return;
         }

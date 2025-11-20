@@ -35,10 +35,21 @@ universal-art-link --help
 
 ## Artist-friendly admin panel
 
-1. Run `universal-art-link dev` (or `pnpm cli dev`) and visit `http://localhost:4173/admin/`.
-2. Enter your host URL + shared secret. We keep them inside `.ual/connection.json`.
-3. Press **Connect** to verify the remote server.
-4. Use the huge **Deploy to …** button whenever you want to publish changes. No terminal required.
+### Local admin server
+
+1. Run `pnpm admin` to serve `http://localhost:4545/`.
+2. Paste the deploy endpoint + shared secret once; we verify `/connect` and store everything inside `.ual/connection.json`.
+3. Hit **Deploy** to trigger `build → package → upload` with zero terminal work.
+
+### Dev server overlay
+
+Prefer the inline UI while developing? Run `universal-art-link dev` (or `pnpm cli dev`) and open `http://localhost:4173/admin/`. Both panels share the same saved connection.
+
+### Schema-driven editor
+
+- Adjust `content/schema.json` to expose site/page/section fields.
+- The admin UIs render that schema into forms so you can edit copy, navigation, and reorder sections without touching YAML, with a live preview pane (powered by `pnpm cli dev` on `http://localhost:4173`).
+- Sections not in the schema fall back to a JSON textarea for manual tweaks.
 
 ## Project structure
 

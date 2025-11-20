@@ -1,14 +1,14 @@
 siteTitle: Atelier Meridian
-siteDescription: "A research-focused art and creative technology studio crafting tactile digital experiences."
-baseUrl: "https://atelier-meridian.example"
-favicon: "/assets/favicon.svg"
+siteDescription: A research-focused art and creative technology studio crafting tactile digital experiences.
+baseUrl: https://atelier-meridian.example
+favicon: /assets/favicon.svg
 theme:
   mode: light
-  background: "#f5f1ea"
-  foreground: "#0b0b0b"
+  background: "#66fcff"
+  foreground: "#ff0000"
   accent: "#4d6fff"
   muted: "#6b6b6b"
-  borderSubtle: "rgba(0,0,0,0.12)"
+  borderSubtle: rgba(0,0,0,0.12)
   typography:
     displaySans: "'Space Grotesk', 'Inter', 'Helvetica Neue', sans-serif"
     bodySans: "'Suisse Intl', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
@@ -16,20 +16,19 @@ theme:
   density: airy
 navigation:
   - label: Work
-    href: "/work"
+    href: /work
   - label: Selected Project
-    href: "/project-orbit"
+    href: /project-orbit
   - label: Journal
-    href: "/journal"
+    href: /journal
   - label: Contact
-    href: "/contact"
+    href: /contact
 socialLinks:
   - label: Instagram
-    href: "https://instagram.com/atelier_meridian"
-  - label: Are.na
-    href: "https://www.are.na/atelier-meridian"
+    href: https://instagram.com/atelier_meridian
+  - label: 4re.na
+    href: https://www.are.na/atelier-meridian
 deploy:
-  endpoint: "https://deploy.example.com/hooks/site"
+  endpoint: https://deploy.example.com/hooks/site
   method: POST
-  authHeader: "Bearer PLACEHOLDER_TOKEN"
-
+  authHeader: Bearer PLACEHOLDER_TOKEN

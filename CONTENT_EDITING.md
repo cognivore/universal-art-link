@@ -64,10 +64,15 @@ universal-art-link deploy    # POST bundle to configured endpoint
 
 ### One-click deploy panel
 
-- Run `universal-art-link dev` and open `http://localhost:4173/admin/`.
-- Paste the remote URL + shared secret from your host, then hit **Connect**.
-- When you're happy with the site, click **Deploy to …** — the panel builds + uploads for you and shows live status logs.
-- Disconnect to remove the saved secret (stored only in `.ual/connection.json`).
+- **Local admin (`pnpm admin`)** – serves `http://localhost:4545/` with the Cargo-style UI. Connect once, then press **Deploy** to trigger `build → package → upload`.
+- **Inline admin (`pnpm cli dev`)** – open `http://localhost:4173/admin/` while the dev server is running for the live-reload version.
+- Both panels share the same connection file (`.ual/connection.json`) and never send data until you deploy.
+
+### Schema-driven editor
+
+- `content/schema.json` defines the fields for site settings, pages, and section blocks.
+- The admin panels render these schemas into forms so editors can edit copy, add/reorder sections, update navigation, and tweak colors without seeing YAML—plus a live preview pane (when `pnpm cli dev` is running on `http://localhost:4173`) mirrors your changes.
+- Use the dropdown inside the editor to insert any section defined in the schema; unsupported/custom sections fall back to JSON editors.
+- Customize `content/schema.json` to expose new fields—no TypeScript changes required.
 
 If CLI commands fail, read the error message—it points to the file/field that needs attention.
-

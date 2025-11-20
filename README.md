@@ -35,12 +35,22 @@ universal-art-link --help
 
 ## Artist-friendly admin panel
 
-1. Run `universal-art-link dev` (or `pnpm cli dev`) and open `http://localhost:4173/admin/`.
-2. Drop in the remote URL (for example `https://deploy.example.com`) and the shared secret your host generated.
-3. Click **Connect**. We store the encrypted connection info locally inside `.ual/connection.json` and verify the remote via `/connect`.
-4. Once connected the giant button reads **Deploy to &lt;url&gt;** — click it whenever you want to ship the latest build. The panel runs the full build → package → upload loop for you.
+### Local admin server (Cargo-style)
 
-If the CLI is not running, the page explains how to start it. Disconnect at any time to wipe the stored secret.
+1. Run `pnpm admin` (served from `admin/server.js`) to boot the panel at `http://localhost:4545/`.
+2. Paste the deploy endpoint + shared secret once. We verify `/connect` and store everything inside `.ual/connection.json`.
+3. Click **Deploy** whenever you are ready. The panel shells out to `node build/cli.js build` → `package` and streams the latest zip to your remote host.
+4. Optional: run `pnpm cli dev` in another terminal so the right-side preview pane can render the live site (it targets `http://localhost:4173`); otherwise hide the preview with the toggle.
+
+### Dev server panel (live reload)
+
+Prefer the inline overlay? Run `universal-art-link dev` (or `pnpm cli dev`) and open `http://localhost:4173/admin/`. It uses the same connection store, so you can switch between panels freely.
+
+### Schema-driven editor
+
+- Define fields + section blocks in `content/schema.json`.
+- Both admin experiences load that schema over `/api/content`, render site/page forms, and let editors add/reorder sections visually while a live preview stays in sync.
+- Unsupported/custom sections fall back to JSON textareas, so you always have an escape hatch.
 
 ## Project structure
 
@@ -62,7 +72,7 @@ dist/               # Generated static site (after build)
 
 ### Option A – magic button
 
-The admin panel controls the CLI. Connect once, then press **Deploy to &lt;url&gt;** and wait for the confirmation toast.
+Use either admin UI (local server or dev panel). Connect once, then deploy with a single click.
 
 ### Option B – classic config
 
@@ -72,20 +82,25 @@ The admin panel controls the CLI. Connect once, then press **Deploy to &lt;url&g
 
 ### Remote endpoint
 
-Need a tiny server that accepts these uploads? Ship it with:
+Need a deploy receiver with release folders + atomic symlinks? Run `server/deploy-receiver.js`:
 
 ```bash
 ssh user@server
 git clone <this-repo> deploy-endpoint
 cd deploy-endpoint
-pnpm install && pnpm build
-node build/cli.js endpoint --secret "SHARED_TOKEN" --target /var/www/yoursite --port 8080
+pnpm install
+DEPLOY_SECRET="long-random-secret" \
+DEPLOY_BASE="/var/www/mysite" \
+PORT=8080 \
+node server/deploy-receiver.js
 ```
 
-The endpoint exposes two routes:
+Routes:
 
-- `POST /connect` verifies the shared secret and responds with metadata for the admin panel.
-- `POST /deploy` accepts `application/zip`, wipes the target folder, and extracts the new site.
+- `POST /connect` – validates the shared secret.
+- `POST /deploy` – streams `application/zip`, extracts into `/releases/<timestamp>` via `adm-zip`, flips `/current`, and prunes older releases (keeps 5). No system `unzip` required.
+
+Point Nginx/Apache at `/current` for uninterrupted rollouts.
 
 For editors, see [`CONTENT_EDITING.md`](./CONTENT_EDITING.md).
 

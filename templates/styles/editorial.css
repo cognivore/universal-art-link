@@ -75,7 +75,12 @@ a {
   border-bottom: 1px solid var(--border-subtle);
   position: sticky;
   top: 0;
-  background: linear-gradient(180deg, rgba(245, 241, 234, 0.95), rgba(245, 241, 234, 0.6));
+  background-color: var(--bg);
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg) 96%, transparent),
+    color-mix(in srgb, var(--bg) 80%, transparent)
+  );
   backdrop-filter: blur(6px);
   z-index: 10;
 }
@@ -138,7 +143,7 @@ a {
   gap: var(--space-lg);
 }
 
-@media (min-width: var(--bp-sm)) {
+@media (min-width: var(--bp-md)) {
   .grid-2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: center;
