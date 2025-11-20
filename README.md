@@ -65,8 +65,20 @@ dist/               # Generated static site (after build)
 ## Development checklist
 
 - `pnpm lint` – type-check the CLI with `tsc --noEmit`.
+- `pnpm test:templates` – validate Handlebars template syntax (see [TEMPLATE_PROTECTION.md](./TEMPLATE_PROTECTION.md)).
 - `pnpm dev` – run CLI via tsx (aliased to `pnpm cli dev`).
 - Treat warnings as errors; type coverage is enforced via strict TypeScript options.
+
+### Template protection
+
+Handlebars templates are protected from auto-formatters that break `{{variable}}` syntax:
+
+- ✅ `.prettierignore` excludes all `.hbs` files
+- ✅ Warning comments in each template file
+- ✅ Automated validation tests (`pnpm test:templates`)
+- ✅ Git pre-commit hook blocks malformed templates
+
+See [TEMPLATE_PROTECTION.md](./TEMPLATE_PROTECTION.md) for details.
 
 ## Deployment
 

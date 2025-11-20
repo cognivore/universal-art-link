@@ -322,12 +322,13 @@ const UAL_EDITOR = (() => {
 
   const renderField = (field, value, basePath) => {
     const path = joinPath(basePath, field.key);
+    const fieldId = `field-${path.replace(/\./g, '-')}`;
     const placeholder = field.placeholder ? ` placeholder="${escapeHtml(field.placeholder)}"` : '';
-    const common = ` data-path="${escapeHtml(path)}"`;
+    const common = ` data-path="${escapeHtml(path)}" id="${escapeHtml(fieldId)}" name="${escapeHtml(fieldId)}"`;
     if (field.type === 'textarea') {
       return `
         <div class="ual-field">
-          <label>${escapeHtml(field.label)}</label>
+          <label for="${escapeHtml(fieldId)}">${escapeHtml(field.label)}</label>
           <textarea${common}${placeholder}>${escapeHtml(value ?? '')}</textarea>
         </div>
       `;
@@ -338,7 +339,7 @@ const UAL_EDITOR = (() => {
       );
       return `
         <div class="ual-field">
-          <label>${escapeHtml(field.label)}</label>
+          <label for="${escapeHtml(fieldId)}">${escapeHtml(field.label)}</label>
           <select${common}>
             ${options.join('')}
           </select>
@@ -358,7 +359,7 @@ const UAL_EDITOR = (() => {
     const inputType = field.type === 'color' ? 'color' : field.type === 'number' ? 'number' : 'text';
     return `
       <div class="ual-field">
-        <label>${escapeHtml(field.label)}</label>
+        <label for="${escapeHtml(fieldId)}">${escapeHtml(field.label)}</label>
         <input type="${inputType}"${common}${placeholder} value="${escapeHtml(value ?? '')}" />
       </div>
     `;
@@ -368,7 +369,7 @@ const UAL_EDITOR = (() => {
     const path = joinPath(basePath, group.key);
     const templateAttr = encodeTemplate(group.default ?? buildDefaultFromFields(group.fields, group.groups));
     const controls = `
-      <button class="ual-editor__button ual-editor__button--ghost" data-action="toggle-group" data-path="${escapeHtml(
+      <button type="button" class="ual-editor__button ual-editor__button--ghost" data-action="toggle-group" data-path="${escapeHtml(
         path
       )}" data-template="${templateAttr}">
         ${value ? 'Remove' : 'Add'}
@@ -416,7 +417,7 @@ const UAL_EDITOR = (() => {
         <div class="ual-list__header">
           <span>${escapeHtml(def.label)}</span>
           <div class="ual-section__controls">
-            <button class="ual-editor__button ual-editor__button--ghost" data-action="add-list-item" data-path="${escapeHtml(
+            <button type="button" class="ual-editor__button ual-editor__button--ghost" data-action="add-list-item" data-path="${escapeHtml(
               path
             )}" data-template="${templateAttr}">
               Add ${escapeHtml(def.itemLabel ?? 'Item')}
@@ -438,13 +439,13 @@ const UAL_EDITOR = (() => {
     const itemPath = `${path}.${index}`;
     const controls = `
       <div class="ual-section__controls">
-        <button class="ual-editor__button ual-editor__button--ghost" data-action="move-list-item" data-path="${escapeHtml(
+        <button type="button" class="ual-editor__button ual-editor__button--ghost" data-action="move-list-item" data-path="${escapeHtml(
           path
         )}" data-index="${index}" data-direction="-1" ${index === 0 ? 'disabled' : ''}>↑</button>
-        <button class="ual-editor__button ual-editor__button--ghost" data-action="move-list-item" data-path="${escapeHtml(
+        <button type="button" class="ual-editor__button ual-editor__button--ghost" data-action="move-list-item" data-path="${escapeHtml(
           path
         )}" data-index="${index}" data-direction="1" ${index === total - 1 ? 'disabled' : ''}>↓</button>
-        <button class="ual-editor__button ual-editor__button--ghost" data-action="remove-list-item" data-path="${escapeHtml(
+        <button type="button" class="ual-editor__button ual-editor__button--ghost" data-action="remove-list-item" data-path="${escapeHtml(
           path
         )}" data-index="${index}">Remove</button>
       </div>
@@ -491,7 +492,7 @@ const UAL_EDITOR = (() => {
         const slug = page?.data?.slug ?? '(no slug)';
         const title = page?.data?.title ?? `Page ${index + 1}`;
         return `
-          <button class="ual-page-item ${index === state.selectedPage ? 'ual-page-item--active' : ''}" data-action="select-page" data-index="${index}">
+          <button type="button" class="ual-page-item ${index === state.selectedPage ? 'ual-page-item--active' : ''}" data-action="select-page" data-index="${index}">
             <strong>${escapeHtml(title)}</strong>
             <p class="ual-page-item__meta">${escapeHtml(slug)}</p>
           </button>
@@ -504,7 +505,7 @@ const UAL_EDITOR = (() => {
         <div class="ual-page-list">
           ${items || '<p class="ual-muted">No pages yet.</p>'}
         </div>
-        <button class="ual-editor__button ual-editor__button--primary" data-action="add-page">Add page</button>
+        <button type="button" class="ual-editor__button ual-editor__button--primary" data-action="add-page">Add page</button>
       </section>
     `;
   };
@@ -514,9 +515,9 @@ const UAL_EDITOR = (() => {
     const path = `pages.${pageIndex}.data.sections.${sectionIndex}`;
     const controls = `
       <div class="ual-section__controls">
-        <button class="ual-editor__button ual-editor__button--ghost" data-action="move-section" data-direction="-1" data-section="${sectionIndex}" ${sectionIndex === 0 ? 'disabled' : ''}>↑</button>
-        <button class="ual-editor__button ual-editor__button--ghost" data-action="move-section" data-direction="1" data-section="${sectionIndex}" ${sectionIndex === (state.content?.pages?.[pageIndex]?.data?.sections?.length ?? 0) - 1 ? 'disabled' : ''}>↓</button>
-        <button class="ual-editor__button ual-editor__button--ghost" data-action="remove-section" data-section="${sectionIndex}">Remove</button>
+        <button type="button" class="ual-editor__button ual-editor__button--ghost" data-action="move-section" data-direction="-1" data-section="${sectionIndex}" ${sectionIndex === 0 ? 'disabled' : ''}>↑</button>
+        <button type="button" class="ual-editor__button ual-editor__button--ghost" data-action="move-section" data-direction="1" data-section="${sectionIndex}" ${sectionIndex === (state.content?.pages?.[pageIndex]?.data?.sections?.length ?? 0) - 1 ? 'disabled' : ''}>↓</button>
+        <button type="button" class="ual-editor__button ual-editor__button--ghost" data-action="remove-section" data-section="${sectionIndex}">Remove</button>
       </div>
     `;
     if (!def || def.mode === 'json') {
@@ -583,7 +584,7 @@ const UAL_EDITOR = (() => {
             <p class="ual-chip">Page</p>
             <h3 class="ual-section__title">${escapeHtml(page.data?.title ?? 'Untitled')}</h3>
           </div>
-          <button class="ual-editor__button ual-editor__button--ghost" data-action="delete-page" ${pages.length <= 1 ? 'disabled' : ''}>Delete page</button>
+          <button type="button" class="ual-editor__button ual-editor__button--ghost" data-action="delete-page" ${pages.length <= 1 ? 'disabled' : ''}>Delete page</button>
         </div>
         ${pageFields}
         <hr style="border: none; border-top: 1px solid var(--editor-border); margin: 1.5rem 0;" />
@@ -594,7 +595,7 @@ const UAL_EDITOR = (() => {
               <select data-control="section-picker" class="ual-editor__button">
                 ${sectionOptions}
               </select>
-              <button class="ual-editor__button ual-editor__button--primary" data-action="add-section">Add section</button>
+              <button type="button" class="ual-editor__button ual-editor__button--primary" data-action="add-section">Add section</button>
             </div>
           </div>
           ${sections}
@@ -617,7 +618,7 @@ const UAL_EDITOR = (() => {
       .map((device) => {
         const active = state.previewDevice === device ? 'is-active' : '';
         const label = device === 'desktop' ? 'Desktop' : device === 'tablet' ? 'Tablet' : 'Mobile';
-        return `<button class="${active}" data-action="set-preview-device" data-device="${device}">${label}</button>`;
+        return `<button type="button" class="${active}" data-action="set-preview-device" data-device="${device}">${label}</button>`;
       })
       .join('');
     const iframeClasses = ['ual-preview__iframe'];
@@ -637,7 +638,7 @@ const UAL_EDITOR = (() => {
             <div class="ual-preview__device">
               ${deviceButtons}
             </div>
-            <button class="ual-editor__button ual-editor__button--ghost" data-action="reload-preview">Reload</button>
+            <button type="button" class="ual-editor__button ual-editor__button--ghost" data-action="reload-preview">Reload</button>
           </div>
         </div>
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:1rem;">
@@ -671,7 +672,7 @@ const UAL_EDITOR = (() => {
     if (state.error) {
       root.innerHTML = `<div class="ual-editor"><p class="ual-editor__status ual-editor__status--error">${escapeHtml(
         state.error
-      )}</p><button class="ual-editor__button ual-editor__button--primary" data-action="refresh">Retry</button></div>`;
+      )}</p><button type="button" class="ual-editor__button ual-editor__button--primary" data-action="refresh">Retry</button></div>`;
       return;
     }
     root.classList.remove('ual-editor--hidden');
@@ -688,9 +689,9 @@ const UAL_EDITOR = (() => {
             <p class="ual-editor__status" data-editor-status></p>
           </div>
           <div class="ual-editor__actions">
-            <button class="ual-editor__button" data-action="toggle-preview">${state.previewVisible ? 'Hide preview' : 'Show preview'}</button>
-            <button class="ual-editor__button" data-action="refresh">Refresh</button>
-            <button class="ual-editor__button ual-editor__button--primary" data-action="save" ${
+            <button type="button" class="ual-editor__button" data-action="toggle-preview">${state.previewVisible ? 'Hide preview' : 'Show preview'}</button>
+            <button type="button" class="ual-editor__button" data-action="refresh">Refresh</button>
+            <button type="button" class="ual-editor__button ual-editor__button--primary" data-action="save" ${
               state.saving ? 'disabled' : ''
             }>${state.saving ? 'Saving…' : 'Save changes'}</button>
           </div>

@@ -1,0 +1,8 @@
+# Handlebars templates must NEVER be auto-formatted by Cursor or any tool
+# Auto-formatters break {{variable}} syntax by inserting spaces/newlines
+templates/**/*.hbs
+starter/templates/**/*.hbs
+
+# These files are protected by validation tests and pre-commit hooks
+# Editing them requires manual verification that {{themeVars}} remains intact
+

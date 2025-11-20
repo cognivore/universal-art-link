@@ -1,0 +1,14 @@
+# Handlebars templates must not be auto-formatted
+# Formatters break {{...}} syntax by adding newlines/spaces
+templates/**/*.hbs
+starter/templates/**/*.hbs
+
+# Generated/build directories
+dist/
+build/
+node_modules/
+
+# Lock files
+pnpm-lock.yaml
+package-lock.json
+
