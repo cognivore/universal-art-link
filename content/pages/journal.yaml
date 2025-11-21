@@ -9,6 +9,8 @@ sections:
   - type: list-section
     title: Entries
     items:
+      - label: Vol. 07 — Cyberpunk and us
+        detail: November 2025
       - label: Vol. 06 — Silk diffraction studies
         detail: June 2025
       - label: Vol. 05 — Letterpress grid prototyping
@@ -17,6 +19,3 @@ sections:
         detail: January 2025
       - label: Vol. 03 — Notes on serif pairings
         detail: November 2024
-      - label: ""
-        detail: ""
-        url: ""

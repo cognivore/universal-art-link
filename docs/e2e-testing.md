@@ -8,24 +8,22 @@ The project has comprehensive end-to-end tests covering both the new shadcn admi
 
 ### Shadcn Admin Panel Tests (`tests/e2e/shadcn-admin.test.js`)
 
-Tests the modern React-based admin interface:
+Focus on the React CMS shell:
 
-- ✅ React root rendering
-- ✅ Runtime config injection
-- ✅ Connection panel UI
-- ✅ Activity log display
-- ✅ Preview pane with health checks
-- ✅ Preview path selection
-- ✅ Health endpoint (`/__ual/healthz`)
-- ✅ Runtime config endpoint (`/__ual/runtime`)
-- ✅ Admin API state endpoint
-- ✅ Tab navigation
-- ✅ Strapi integration card (when configured)
-- ✅ No React rendering errors
+- ✅ Page sidebar + layout load
+- ✅ Section creation
+- ✅ Field editing & dirty state tracking
+- ✅ Preview path/device controls
+- ✅ Save flow (POST `/__ual/api/content`)
 
-### Legacy Admin Tests (`tests/e2e/admin-panel.test.js`)
+### CMS Editor Workflow Tests (`tests/e2e/admin-panel.test.js`)
 
-Skipped in favor of the shadcn implementation. Can be re-enabled if the legacy content editor needs to be tested.
+Smoke-tests the full editor interactions:
+
+- ✅ Section add/remove operations
+- ✅ Site + page form editing
+- ✅ Page add/delete gutter controls
+- ✅ Preview toggle + device switch
 
 ### Diagnostic Tests (`tests/e2e/admin-diagnostic.test.js`)
 
@@ -43,9 +41,6 @@ pnpm test:e2e
 
 # Shadcn admin only
 pnpm test:e2e:shadcn
-
-# Legacy admin only (currently skipped)
-pnpm test:e2e:legacy
 
 # All tests (unit + e2e)
 pnpm test:all
@@ -75,9 +70,9 @@ Tests use the shared `setup.js` module which:
 
 ## Current Status
 
-**All 13 tests passing** ✅
+**All 15 tests passing** ✅
 
-- 12 shadcn admin tests
-- 1 diagnostic test
-- Legacy suite skipped
+- 5 shadcn admin smoke tests
+- 4 CMS workflow tests
+- 1 diagnostic test (executed once per run)
 

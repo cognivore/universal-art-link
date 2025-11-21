@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -8,15 +8,17 @@ import { cn } from '../../lib/utils';
 import type { AdminRuntimeConfig } from '../../lib/runtime-config';
 
 export type PreviewPaneProps = {
-  config: AdminRuntimeConfig;
-  paths: string[];
+  readonly config: AdminRuntimeConfig;
+  readonly paths: string[];
+  readonly version?: number;
+  readonly selectedPath?: string;
 };
 
 type Device = 'desktop' | 'tablet' | 'mobile';
 
-export const PreviewPane = ({ config, paths }: PreviewPaneProps) => {
+export const PreviewPane = ({ config, paths, version, selectedPath: initialPath }: PreviewPaneProps) => {
   const [device, setDevice] = useState<Device>('desktop');
-  const [selectedPath, setSelectedPath] = useState(paths[0] ?? '/');
+  const [selectedPath, setSelectedPath] = useState(initialPath ?? paths[0] ?? '/');
   const [status, setStatus] = useState<'checking' | 'ready' | 'error'>('checking');
   const [reloadKey, setReloadKey] = useState(() => Date.now());
 
@@ -46,6 +48,23 @@ export const PreviewPane = ({ config, paths }: PreviewPaneProps) => {
 
   const reloadFrame = useCallback(() => {
     setReloadKey(Date.now());
+    void checkHealth();
+  }, [checkHealth]);
+
+  useEffect(() => {
+    if (initialPath && initialPath !== selectedPath) {
+      setSelectedPath(initialPath);
+    }
+  }, [initialPath, selectedPath]);
+
+  useEffect(() => {
+    if (version) {
+      setReloadKey(Date.now());
+      void checkHealth();
+    }
+  }, [checkHealth, version]);
+
+  useEffect(() => {
     void checkHealth();
   }, [checkHealth]);
 
@@ -86,6 +105,7 @@ export const PreviewPane = ({ config, paths }: PreviewPaneProps) => {
           <TabsContent value={device}>
             <div className="flex items-center justify-between gap-3">
               <select
+                data-testid="preview-path-select"
                 className="flex-1 rounded-2xl border border-input bg-transparent px-4 py-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value={selectedPath}
                 onChange={(event) => setSelectedPath(event.target.value)}

@@ -215,7 +215,9 @@ const serveStatic = async (
 
   if (ext === '.html') {
     let html = await fs.readFile(filePath, 'utf8');
-    html = injectLiveReload(html);
+    if (!isAdminRequest) {
+      html = injectLiveReload(html);
+    }
     if (isAdminRequest) {
       html = injectRuntimeConfig(html, options.runtimeConfig);
     }
