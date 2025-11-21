@@ -35,6 +35,12 @@ describe('CMS Editor E2E Tests', () => {
 
   it('should add and remove sections, keeping dirty state', async () => {
     await openStudio();
+
+    // Navigate to Sections tab
+    const sectionsTab = await driver.findElement(By.xpath("//button[contains(text(), 'Sections')]"));
+    await sectionsTab.click();
+    await driver.sleep(300);
+
     const sectionPicker = await driver.findElement(By.css('[data-testid="section-picker"]'));
     await sectionPicker.click();
     await driver.findElement(By.css('[data-testid="add-section-button"]')).click();
@@ -43,10 +49,21 @@ describe('CMS Editor E2E Tests', () => {
     assert.ok(sectionCards.length > 0, 'Section cards should exist after adding one');
     const removeButton = await sectionCards[sectionCards.length - 1].findElement(By.xpath(".//button[contains(text(),'Remove')]"));
     await removeButton.click();
+
+    // Handle confirmation dialog
+    await driver.sleep(200);
+    const confirmButton = await driver.findElement(By.xpath("//button[contains(text(), 'Remove section')]"));
+    await confirmButton.click();
   });
 
   it('should update site title and trigger save state', async () => {
     await openStudio();
+
+    // Navigate to Site settings
+    const siteNav = await driver.findElement(By.css('[data-testid="nav-site"]'));
+    await siteNav.click();
+    await driver.sleep(300);
+
     const input = await driver.findElement(By.css('[data-testid="site-panel"] input'));
     await input.clear();
     await input.sendKeys('UAL CMS Test');

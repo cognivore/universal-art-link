@@ -19,9 +19,10 @@ type SectionListProps = {
   readonly onListChange: (operation: ListOperation) => void;
   readonly onToggleGroup: (path: string, template: Record<string, unknown>) => void;
   readonly onAddSection: (sectionType: string) => void;
-  readonly onRemoveSection: (index: number) => void;
+  readonly onRemoveSection: (index: number) => Promise<void>;
   readonly onMoveSection: (index: number, direction: number) => void;
   readonly getValue: (path: string) => unknown;
+  readonly onConfirmRemove?: (itemLabel: string) => Promise<boolean>;
 };
 
 type SchemaFormProps = React.ComponentProps<typeof SchemaForm>;
@@ -38,6 +39,7 @@ export const SectionList = ({
   onRemoveSection,
   onMoveSection,
   getValue,
+  onConfirmRemove,
 }: SectionListProps) => {
   const sections = Array.isArray(page?.data?.sections) ? page?.data.sections : [];
   const availableSections = schema?.sections ?? [];
@@ -92,7 +94,7 @@ export const SectionList = ({
                   <Button variant="ghost" size="sm" onClick={() => onMoveSection(index, 1)} disabled={index === sections.length - 1}>
                     ↓
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => onRemoveSection(index)}>
+                  <Button variant="ghost" size="sm" onClick={() => void onRemoveSection(index)}>
                     Remove
                   </Button>
                 </div>
@@ -116,7 +118,7 @@ export const SectionList = ({
                   />
                 </div>
               ) : (
-                <SchemaForm basePath={basePath} fields={def?.fields} lists={def?.lists} groups={def?.groups} getValue={getValue} onFieldChange={onFieldChange} onListChange={onListChange} onToggleGroup={onToggleGroup} />
+                <SchemaForm basePath={basePath} fields={def?.fields} lists={def?.lists} groups={def?.groups} getValue={getValue} onFieldChange={onFieldChange} onListChange={onListChange} onToggleGroup={onToggleGroup} onConfirmRemove={onConfirmRemove} />
               )}
             </div>
           );

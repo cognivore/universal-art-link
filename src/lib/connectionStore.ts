@@ -36,3 +36,4 @@ export const deleteConnectionRecord = async (rootDir: string): Promise<void> => 
   await fs.remove(filePath);
 };
 
+

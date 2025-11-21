@@ -114,3 +114,4 @@ The broken syntax passed unnoticed because:
 - **Always** run tests before pushing template changes
 - **Keep** the protection files (`.prettierignore`, pre-commit hook, tests) in sync across `templates/` and `starter/templates/`
 
+

@@ -73,6 +73,13 @@ describe('Shadcn Admin Panel E2E Tests', () => {
 
   it('should add a new section via the picker', async () => {
     await driver.get(`${baseUrl}/admin`);
+    await driver.wait(until.elementLocated(By.css('[data-testid="page-sidebar"]')), 10000);
+
+    // Navigate to Sections tab
+    const sectionsTab = await driver.findElement(By.xpath("//button[contains(text(), 'Sections')]"));
+    await sectionsTab.click();
+    await driver.sleep(300);
+
     await driver.wait(until.elementLocated(By.css('[data-testid="section-list"]')), 10000);
     const initialSections = await driver.findElements(By.css('[data-testid="section-list"] .rounded-3xl'));
     const picker = await driver.findElement(By.css('[data-testid="section-picker"]'));
@@ -86,7 +93,13 @@ describe('Shadcn Admin Panel E2E Tests', () => {
 
   it('should mark the editor dirty after editing a field', async () => {
     await driver.get(`${baseUrl}/admin`);
-    await driver.wait(until.elementLocated(By.css('[data-testid="site-panel"] input')) , 10000);
+
+    // Navigate to Site settings
+    const siteNav = await driver.wait(until.elementLocated(By.css('[data-testid="nav-site"]')), 10000);
+    await siteNav.click();
+    await driver.sleep(300);
+
+    await driver.wait(until.elementLocated(By.css('[data-testid="site-panel"] input')), 10000);
     const siteTitleInput = await driver.findElement(By.css('[data-testid="site-panel"] input'));
     await siteTitleInput.clear();
     await siteTitleInput.sendKeys('Automated Test Title');
@@ -109,6 +122,12 @@ describe('Shadcn Admin Panel E2E Tests', () => {
 
   it('should save changes successfully', async () => {
     await driver.get(`${baseUrl}/admin`);
+
+    // Navigate to Site settings
+    const siteNav = await driver.wait(until.elementLocated(By.css('[data-testid="nav-site"]')), 10000);
+    await siteNav.click();
+    await driver.sleep(300);
+
     await driver.wait(until.elementLocated(By.css('[data-testid="site-panel"] input')), 10000);
     const input = await driver.findElement(By.css('[data-testid="site-panel"] input'));
     await input.clear();

@@ -66,7 +66,8 @@ export const PreviewPane = ({ config, paths, version, selectedPath: initialPath 
 
   useEffect(() => {
     void checkHealth();
-  }, [checkHealth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const deviceClass = useMemo(() => {
     if (device === 'tablet') return 'max-w-[768px]';
@@ -139,7 +140,12 @@ export const PreviewPane = ({ config, paths, version, selectedPath: initialPath 
                       title="UAL Preview"
                       className={cn('h-full w-full border-0', device === 'mobile' && 'h-[700px]')}
                       sandbox="allow-same-origin allow-scripts allow-forms"
-                      onLoad={() => setStatus('ready')}
+                      onLoad={() => {
+                        setStatus('ready');
+                      }}
+                      onError={() => {
+                        setStatus('error');
+                      }}
                     />
                   </div>
                 </div>

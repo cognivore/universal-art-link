@@ -12,12 +12,47 @@ import { useContentStudio } from './useContentStudio';
 import { PreviewPane } from '../preview/PreviewPane';
 import { getByPath } from './helpers';
 import { StudioNav, type StudioNavView } from './StudioNav';
+import { useConfirm } from '../../hooks/useConfirm';
 
 export const ContentStudio = () => {
   const runtimeConfig = useMemo(() => getRuntimeConfig(), []);
   const studio = useContentStudio(runtimeConfig);
+  const { confirm, dialog } = useConfirm();
   const [navView, setNavView] = useState<StudioNavView>('content');
   const [pageTab, setPageTab] = useState<'details' | 'sections'>('details');
+
+  const handleDeletePage = async () => {
+    const confirmed = await confirm({
+      title: 'Delete this page?',
+      description: 'This action cannot be undone. The page and all its sections will be permanently removed.',
+      confirmLabel: 'Delete page',
+      cancelLabel: 'Keep it',
+    });
+    if (confirmed) {
+      studio.deletePage();
+    }
+  };
+
+  const handleRemoveSection = async (index: number) => {
+    const confirmed = await confirm({
+      title: 'Remove this section?',
+      description: 'This section will be permanently removed from the page.',
+      confirmLabel: 'Remove section',
+      cancelLabel: 'Cancel',
+    });
+    if (confirmed) {
+      studio.removeSection(index);
+    }
+  };
+
+  const handleConfirmRemoveItem = async (itemLabel: string): Promise<boolean> => {
+    return confirm({
+      title: `Remove this ${itemLabel.toLowerCase()}?`,
+      description: 'This entry will be permanently removed.',
+      confirmLabel: `Remove ${itemLabel.toLowerCase()}`,
+      cancelLabel: 'Cancel',
+    });
+  };
 
   if (studio.state.loading) {
     return (
@@ -95,8 +130,8 @@ export const ContentStudio = () => {
       <div className="flex flex-col gap-6 xl:flex-row">
         <StudioNav value={navView} onChange={setNavView} />
         <ResizablePanelGroup direction="horizontal" className="flex-1 gap-4">
-          <ResizablePanel defaultSize={55} minSize={40}>
-            <div className="flex flex-col gap-6" data-testid="cms-layout">
+          <ResizablePanel defaultSize={55} minSize={40} className="overflow-auto">
+            <div className="flex flex-col gap-6 pb-20" data-testid="cms-layout">
               {navView === 'site' && studio.state.schema?.site ? (
                 <Card data-testid="site-panel" className="max-w-3xl">
                   <CardHeader className="pb-4">
@@ -113,6 +148,7 @@ export const ContentStudio = () => {
                       onFieldChange={studio.updateField}
                       onListChange={studio.modifyList}
                       onToggleGroup={studio.toggleGroup}
+                      onConfirmRemove={handleConfirmRemoveItem}
                     />
                   </CardContent>
                 </Card>
@@ -123,7 +159,7 @@ export const ContentStudio = () => {
                     selectedIndex={studio.state.selectedPage}
                     onSelect={studio.selectPage}
                     onAddPage={studio.addPage}
-                    onDeletePage={studio.deletePage}
+                    onDeletePage={handleDeletePage}
                   />
                   <Card data-testid="page-panel">
                     <CardHeader className="pb-4">
@@ -133,7 +169,7 @@ export const ContentStudio = () => {
                           <CardTitle>{pageTitle}</CardTitle>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Button variant="outline" size="sm" onClick={() => studio.deletePage()} disabled={studio.state.content.pages.length <= 1}>
+                          <Button variant="outline" size="sm" onClick={handleDeletePage} disabled={studio.state.content.pages.length <= 1}>
                             Delete page
                           </Button>
                         </div>
@@ -155,6 +191,7 @@ export const ContentStudio = () => {
                             onFieldChange={studio.updateField}
                             onListChange={studio.modifyList}
                             onToggleGroup={studio.toggleGroup}
+                            onConfirmRemove={handleConfirmRemoveItem}
                           />
                         </TabsContent>
                         <TabsContent value="sections">
@@ -168,8 +205,9 @@ export const ContentStudio = () => {
                             onListChange={studio.modifyList}
                             onToggleGroup={studio.toggleGroup}
                             onAddSection={studio.addSection}
-                            onRemoveSection={studio.removeSection}
+                            onRemoveSection={handleRemoveSection}
                             onMoveSection={studio.moveSection}
+                            onConfirmRemove={handleConfirmRemoveItem}
                           />
                         </TabsContent>
                       </Tabs>
@@ -182,7 +220,7 @@ export const ContentStudio = () => {
           {studio.state.previewVisible ? (
             <>
               <ResizableHandle />
-              <ResizablePanel defaultSize={45} minSize={35}>
+              <ResizablePanel defaultSize={45} minSize={35} className="sticky top-0 h-screen overflow-hidden">
                 <PreviewPane
                   config={runtimeConfig}
                   paths={studio.previewPaths}
@@ -194,6 +232,7 @@ export const ContentStudio = () => {
           ) : null}
         </ResizablePanelGroup>
       </div>
+      {dialog}
     </div>
   );
 };

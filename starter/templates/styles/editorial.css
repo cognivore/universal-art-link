@@ -390,9 +390,21 @@ a {
   font-size: 0.78rem;
 }
 
-@media (max-width: var(--bp-md)) {
+@media (max-width: 900px) {
+  html,
+  body {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
+  .project-shell {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
   .project-layout {
     grid-template-columns: 1fr;
+    overflow-x: hidden;
   }
 
   .project-nav {
@@ -402,6 +414,53 @@ a {
     padding-right: 0;
     padding-bottom: var(--space-sm);
     margin-bottom: var(--space-md);
+    text-align: right;
+    max-width: 100%;
+  }
+
+  .project-nav p,
+  .project-nav .project-meta {
+    max-width: 100%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .site-main {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .single-project__header {
+    text-align: left;
+    padding: 0;
+    max-width: 100%;
+  }
+
+  .single-project__header .display {
+    font-size: clamp(2rem, 8vw, 3.5rem);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+  }
+
+  .single-project__header .micro-label,
+  .single-project__header .pill-list {
+    text-align: left;
+    max-width: 100%;
+  }
+
+  .project-blocks {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .project-block {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .project-block .measure {
+    max-width: 100%;
   }
 }
 

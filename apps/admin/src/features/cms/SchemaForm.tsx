@@ -14,9 +14,10 @@ type SchemaFormProps = {
   readonly onFieldChange: (path: string, value: unknown) => void;
   readonly onListChange: (operation: { type: 'add'; path: string; template: Record<string, unknown> } | { type: 'remove'; path: string; index: number } | { type: 'move'; path: string; index: number; direction: number }) => void;
   readonly onToggleGroup: (path: string, template: Record<string, unknown>) => void;
+  readonly onConfirmRemove?: (itemLabel: string) => Promise<boolean>;
 };
 
-export const SchemaForm = ({ basePath, fields = [], lists = [], groups = [], getValue, onFieldChange, onListChange, onToggleGroup }: SchemaFormProps) => (
+export const SchemaForm = ({ basePath, fields = [], lists = [], groups = [], getValue, onFieldChange, onListChange, onToggleGroup, onConfirmRemove }: SchemaFormProps) => (
   <div className="space-y-4">
     {fields.map((field) => (
       <FieldInput key={field.key} field={field} value={getValue(join(basePath, field.key))} onChange={(value) => onFieldChange(join(basePath, field.key), value)} />
@@ -31,6 +32,7 @@ export const SchemaForm = ({ basePath, fields = [], lists = [], groups = [], get
         onFieldChange={onFieldChange}
         onListChange={onListChange}
         onToggleGroup={onToggleGroup}
+        onConfirmRemove={onConfirmRemove}
       />
     ))}
     {lists.map((list) => (
@@ -43,6 +45,7 @@ export const SchemaForm = ({ basePath, fields = [], lists = [], groups = [], get
         onFieldChange={onFieldChange}
         onListChange={onListChange}
         onToggleGroup={onToggleGroup}
+        onConfirmRemove={onConfirmRemove}
       />
     ))}
   </div>
@@ -106,9 +109,10 @@ type GroupInputProps = {
   readonly onFieldChange: SchemaFormProps['onFieldChange'];
   readonly onListChange: SchemaFormProps['onListChange'];
   readonly onToggleGroup: SchemaFormProps['onToggleGroup'];
+  readonly onConfirmRemove?: SchemaFormProps['onConfirmRemove'];
 };
 
-const GroupInput = ({ group, basePath, value, getValue, onFieldChange, onListChange, onToggleGroup }: GroupInputProps) => {
+const GroupInput = ({ group, basePath, value, getValue, onFieldChange, onListChange, onToggleGroup, onConfirmRemove }: GroupInputProps) => {
   const isActive = value != null;
   return (
     <div className="rounded-2xl border border-dashed px-4 py-3">
@@ -140,6 +144,7 @@ const GroupInput = ({ group, basePath, value, getValue, onFieldChange, onListCha
           onFieldChange={onFieldChange}
           onListChange={onListChange}
           onToggleGroup={onToggleGroup}
+          onConfirmRemove={onConfirmRemove}
         />
       ) : group.optional ? (
         <p className="text-sm text-muted-foreground">Not set.</p>
@@ -153,6 +158,7 @@ const GroupInput = ({ group, basePath, value, getValue, onFieldChange, onListCha
           onFieldChange={onFieldChange}
           onListChange={onListChange}
           onToggleGroup={onToggleGroup}
+          onConfirmRemove={onConfirmRemove}
         />
       )}
     </div>
@@ -167,9 +173,10 @@ type ListInputProps = {
   readonly onFieldChange: SchemaFormProps['onFieldChange'];
   readonly onListChange: SchemaFormProps['onListChange'];
   readonly onToggleGroup: SchemaFormProps['onToggleGroup'];
+  readonly onConfirmRemove?: SchemaFormProps['onConfirmRemove'];
 };
 
-const ListInput = ({ list, basePath, value, getValue, onFieldChange, onListChange, onToggleGroup }: ListInputProps) => {
+const ListInput = ({ list, basePath, value, getValue, onFieldChange, onListChange, onToggleGroup, onConfirmRemove }: ListInputProps) => {
   const items = Array.isArray(value) ? value : [];
   const template = list.itemTemplate ?? list.default ?? {};
 
@@ -201,7 +208,17 @@ const ListInput = ({ list, basePath, value, getValue, onFieldChange, onListChang
                 >
                   ↓
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => onListChange({ type: 'remove', path: basePath, index })}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={async () => {
+                    if (onConfirmRemove) {
+                      const confirmed = await onConfirmRemove(list.itemLabel ?? 'item');
+                      if (!confirmed) return;
+                    }
+                    onListChange({ type: 'remove', path: basePath, index });
+                  }}
+                >
                   Remove
                 </Button>
               </div>
@@ -215,6 +232,7 @@ const ListInput = ({ list, basePath, value, getValue, onFieldChange, onListChang
               onFieldChange={onFieldChange}
               onListChange={onListChange}
               onToggleGroup={onToggleGroup}
+              onConfirmRemove={onConfirmRemove}
             />
           </div>
         ))}

@@ -82,21 +82,39 @@ export const runDevCommand = async ({ port = 4173, strapiUrl }: DevOptions = {})
   };
 
   watcher.on('all', (event, changedPath) => {
-    log.info(`Detected ${event} at ${changedPath}`);
+    log.info(`[watcher] Detected ${event} at ${changedPath}`);
     void rebuild();
   });
 
-  const shutdown = async (): Promise<void> => {
-    await Promise.all([watcher.close(), server.close(), adminWatcher?.close()]);
-    log.info('dev server stopped');
+  const shutdown = async (signal: string): Promise<void> => {
+    log.info(`[shutdown] Received ${signal}, closing dev server...`);
+    try {
+      log.info('[shutdown] Closing watcher...');
+      await watcher.close();
+      log.info('[shutdown] Closing HTTP server...');
+      await server.close();
+      log.info('[shutdown] Closing admin watcher...');
+      await adminWatcher?.close();
+      log.info('[shutdown] Dev server stopped cleanly');
+    } catch (error) {
+      log.error('[shutdown] Error during shutdown', error);
+    }
     process.exit(0);
   };
 
   process.on('SIGINT', () => {
-    void shutdown();
+    void shutdown('SIGINT');
   });
   process.on('SIGTERM', () => {
-    void shutdown();
+    void shutdown('SIGTERM');
+  });
+  process.on('uncaughtException', (error) => {
+    log.error('[fatal] Uncaught exception', error);
+    void shutdown('uncaughtException');
+  });
+  process.on('unhandledRejection', (reason) => {
+    log.error('[fatal] Unhandled promise rejection', reason);
+    void shutdown('unhandledRejection');
   });
 };
 

@@ -137,7 +137,7 @@ export const useContentStudio = (config: AdminRuntimeConfig) => {
         const target = getByPath(draft, operation.path);
         if (!Array.isArray(target)) return;
         if (operation.type === 'add') {
-          target.push(clone(operation.template));
+          target.unshift(clone(operation.template)); // Add to top instead of push
           return;
         }
         if (operation.type === 'remove') {

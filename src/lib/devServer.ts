@@ -52,10 +52,66 @@ const injectLiveReload = (html: string): string => {
   const snippet = `
     <script>
       (() => {
-        const source = new EventSource('/__ual/live');
-        source.addEventListener('message', (event) => {
-          if (event.data === 'reload') {
-            window.location.reload();
+        console.log('[UAL] Initializing live reload client');
+        let source = null;
+        let reconnectAttempts = 0;
+        const maxReconnects = 3;
+
+        const connect = () => {
+          if (source) {
+            console.log('[UAL] Closing existing EventSource before reconnect');
+            source.close();
+          }
+
+          console.log('[UAL] Connecting to live reload server (attempt ' + (reconnectAttempts + 1) + ')');
+          source = new EventSource('/__ual/live');
+
+          source.addEventListener('open', () => {
+            console.log('[UAL] Live reload connected');
+            reconnectAttempts = 0;
+          });
+
+          source.addEventListener('message', (event) => {
+            console.log('[UAL] Received reload signal');
+            if (event.data === 'reload') {
+              window.location.reload();
+            }
+          });
+
+          source.addEventListener('error', (error) => {
+            console.log('[UAL] EventSource error, closing connection');
+            source.close();
+            if (reconnectAttempts < maxReconnects) {
+              reconnectAttempts++;
+              console.log('[UAL] Will retry connection in 2 seconds');
+              setTimeout(connect, 2000);
+            } else {
+              console.log('[UAL] Max reconnection attempts reached');
+            }
+          });
+        };
+
+        connect();
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+          console.log('[UAL] Page unloading, closing live reload connection');
+          if (source) {
+            source.close();
+            source = null;
+          }
+        });
+
+        // Cleanup on visibility change (tab switching)
+        document.addEventListener('visibilitychange', () => {
+          if (document.hidden && source) {
+            console.log('[UAL] Tab hidden, closing live reload connection');
+            source.close();
+            source = null;
+          } else if (!document.hidden && !source) {
+            console.log('[UAL] Tab visible, reconnecting live reload');
+            reconnectAttempts = 0;
+            connect();
           }
         });
       })();
@@ -247,30 +303,60 @@ export const startDevServer = ({
 
   const server = http.createServer(async (req, res) => {
     const requestUrl = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+    const requestMethod = req.method ?? 'GET';
+    const requestPath = requestUrl.pathname;
+
+    logger.info(`[devserver] ${requestMethod} ${requestPath}`);
 
     if (requestUrl.pathname === '/__ual/healthz') {
+      logger.info('[devserver] Health check');
       respondJson(res, 200, { ok: true, ts: Date.now() });
       return;
     }
 
     if (requestUrl.pathname === '/__ual/runtime' && req.method === 'GET') {
+      logger.info('[devserver] Runtime config requested');
       respondJson(res, 200, runtimeState);
       return;
     }
 
     if ((req.url ?? '').startsWith('/__ual/live')) {
+      const clientId = `${req.socket.remoteAddress}:${req.socket.remotePort}`;
+      logger.info(`[devserver] Live reload client connected (id: ${clientId}, total: ${clients.size + 1})`);
+
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         Connection: 'keep-alive',
         'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no',
       });
-      res.write('\n');
+      res.write(': keepalive\n\n');
       clients.add(res);
-      req.on('close', () => clients.delete(res));
+
+      // Send keepalive heartbeat every 30 seconds
+      const heartbeat = setInterval(() => {
+        if (!res.writableEnded) {
+          res.write(': heartbeat\n\n');
+        }
+      }, 30000);
+
+      req.on('close', () => {
+        clearInterval(heartbeat);
+        clients.delete(res);
+        logger.info(`[devserver] Live reload client disconnected (id: ${clientId}, remaining: ${clients.size})`);
+      });
+
+      req.on('error', (error) => {
+        clearInterval(heartbeat);
+        clients.delete(res);
+        logger.error(`[devserver] Live reload client error (id: ${clientId})`, error);
+      });
+
       return;
     }
 
     if (requestUrl.pathname.startsWith('/__ual/api')) {
+      logger.info(`[devserver] Admin API: ${requestMethod} ${requestPath}`);
       try {
         const handled = await handleAdminApi(req, res, adminService, paths);
         if (handled) {
@@ -284,6 +370,7 @@ export const startDevServer = ({
     }
 
     try {
+      logger.info(`[devserver] Serving static: ${requestPath} from ${distDir}`);
       await serveStatic(req, res, distDir, { adminAssetsDir, runtimeConfig: runtimeState });
     } catch (error) {
       logger.error('Error serving request', error);
@@ -293,21 +380,31 @@ export const startDevServer = ({
   });
 
   server.listen(port, () => {
-    logger.info(`dev server listening on http://localhost:${port}`);
+    logger.info(`[devserver] HTTP server listening on http://localhost:${port}`);
+    logger.info(`[devserver] Serving from: ${distDir}`);
+    logger.info(`[devserver] Admin assets: ${adminAssetsDir ?? 'none'}`);
   });
 
   const notifyReload = (): void => {
+    logger.info(`[devserver] Notifying ${clients.size} client(s) to reload`);
     for (const client of clients) {
-      client.write('data: reload\n\n');
+      try {
+        client.write('data: reload\n\n');
+      } catch (error) {
+        logger.error('[devserver] Failed to notify client', error);
+      }
     }
   };
 
   const close = async (): Promise<void> =>
     new Promise((resolve, reject) => {
+      logger.info('[devserver] Closing HTTP server...');
       server.close((error) => {
         if (error) {
+          logger.error('[devserver] Error closing HTTP server', error);
           reject(error);
         } else {
+          logger.info('[devserver] HTTP server closed successfully');
           resolve();
         }
       });
