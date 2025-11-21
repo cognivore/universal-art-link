@@ -12,6 +12,8 @@ export type PathConfig = {
   readonly assetsDir: string;
   readonly adminDir: string;
   readonly adminSharedDir: string;
+  readonly adminAppDir: string;
+  readonly adminAppDistDir: string;
   readonly internalDir: string;
   readonly outputDir: string;
 };
@@ -31,6 +33,8 @@ export const createPathConfig = (rootDir: string, outputDir = 'dist'): PathConfi
     assetsDir: resolve('assets'),
     adminDir: resolve('admin/dev'),
     adminSharedDir: resolve('admin/shared'),
+    adminAppDir: resolve('apps/admin'),
+    adminAppDistDir: resolve('apps/admin/dist'),
     internalDir: resolve('.ual'),
     outputDir: resolve(outputDir),
   };

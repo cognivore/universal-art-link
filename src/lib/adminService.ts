@@ -8,6 +8,8 @@ import {
   readConnectionRecord,
   writeConnectionRecord,
 } from './connectionStore.js';
+import { createPathConfig } from './paths.js';
+import { buildAdminFrontend } from './adminFrontend.js';
 
 type PublicConnection = {
   readonly baseUrl: string;
@@ -148,6 +150,8 @@ export class AdminService {
     this.logger.info('Building site for deployment…');
     const startedAt = Date.now();
     try {
+      const paths = createPathConfig(this.rootDir);
+      await buildAdminFrontend(paths, this.logger);
       const buildResult = await buildSite({ rootDir: this.rootDir, invalidateTemplates: true });
       const zipPath = await createZipFromDist(buildResult.outputDir);
       this.logger.info(`Uploading bundle (${zipPath}) to ${record.deployEndpoint}`);

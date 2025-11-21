@@ -5,6 +5,7 @@ import { createPathConfig } from '../lib/paths.js';
 import { createZipFromDist } from '../lib/packageSite.js';
 import { loadSiteConfig } from '../lib/contentLoader.js';
 import { readConnectionRecord } from '../lib/connectionStore.js';
+import { buildAdminFrontend } from '../lib/adminFrontend.js';
 
 export const runDeployCommand = async (): Promise<void> => {
   const rootDir = process.cwd();
@@ -31,6 +32,7 @@ export const runDeployCommand = async (): Promise<void> => {
       return;
     }
 
+    await buildAdminFrontend(paths, log);
     const buildResult = await buildSite({ rootDir, invalidateTemplates: true });
     const zipPath = await createZipFromDist(buildResult.outputDir);
     const response = await deployZipBundle(zipPath, deployConfig);

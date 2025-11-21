@@ -1,0 +1,22 @@
+# Build outputs
+node_modules/
+build/
+dist/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# UAL internal
+.ual/
+
+# Deployment credentials
+*credentials.yaml
+

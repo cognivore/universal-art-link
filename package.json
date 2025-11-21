@@ -9,14 +9,18 @@
   },
   "scripts": {
     "clean": "rimraf build dist",
-    "build": "tsc --project tsconfig.json",
+    "build": "tsc --project tsconfig.json && pnpm --filter ual-admin build",
     "dev": "tsx src/cli.ts dev",
     "cli": "tsx src/cli.ts",
+    "admin:dev": "pnpm --filter ual-admin dev",
+    "admin:build": "pnpm --filter ual-admin build",
     "admin": "node admin/server.js",
     "lint": "tsc --noEmit",
     "test": "node --test --import tsx src/**/*.test.ts",
     "test:templates": "node --test --import tsx src/lib/template.test.ts",
     "test:e2e": "node --test tests/e2e/**/*.test.js",
+    "test:e2e:legacy": "node --test tests/e2e/admin-panel.test.js",
+    "test:e2e:shadcn": "node --test tests/e2e/shadcn-admin.test.js",
     "test:all": "pnpm test && pnpm test:e2e"
   },
   "keywords": [

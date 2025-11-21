@@ -23,17 +23,29 @@ const mimeMap: Record<string, string> = {
 
 type LiveReloadClient = http.ServerResponse<http.IncomingMessage>;
 
+export type AdminRuntimeConfig = {
+  readonly previewBaseUrl: string;
+  readonly previewHealthPath: string;
+  readonly apiBaseUrl: string;
+  readonly adminBaseUrl: string;
+  readonly strapiUrl: string;
+  readonly previewPaths: ReadonlyArray<string>;
+};
+
 type DevServerOptions = {
   readonly distDir: string;
+  readonly adminAssetsDir?: string;
   readonly port: number;
   readonly logger: Logger;
   readonly adminService: AdminService;
   readonly paths: PathConfig;
+  readonly runtimeConfig: AdminRuntimeConfig;
 };
 
 export type DevServer = {
   readonly notifyReload: () => void;
   readonly close: () => Promise<void>;
+  readonly updateRuntimeConfig: (patch: Partial<AdminRuntimeConfig>) => void;
 };
 
 const injectLiveReload = (html: string): string => {
@@ -53,6 +65,14 @@ const injectLiveReload = (html: string): string => {
     return html.replace('</body>', `${snippet}</body>`);
   }
   return `${html}${snippet}`;
+};
+
+const injectRuntimeConfig = (html: string, runtime: AdminRuntimeConfig): string => {
+  const script = `<script>window.__UAL_RUNTIME__ = ${JSON.stringify(runtime)};</script>`;
+  if (html.includes('</head>')) {
+    return html.replace('</head>', `${script}</head>`);
+  }
+  return `${script}${html}`;
 };
 
 const respondJson = (res: http.ServerResponse<http.IncomingMessage>, status: number, payload: unknown): void => {
@@ -151,15 +171,25 @@ const handleAdminApi = async (
   }
 };
 
+type StaticOptions = {
+  readonly adminAssetsDir?: string;
+  readonly runtimeConfig: AdminRuntimeConfig;
+};
+
 const serveStatic = async (
   req: http.IncomingMessage,
   res: http.ServerResponse<http.IncomingMessage>,
   distDir: string,
+  options: StaticOptions,
 ): Promise<void> => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   const decoded = decodeURIComponent(url.pathname);
-  const targetPath = decoded === '/' ? '/index.html' : decoded;
-  let filePath = path.join(distDir, targetPath);
+  const isAdminRequest = decoded === '/admin' || decoded.startsWith('/admin/');
+  const useAlternateRoot = Boolean(isAdminRequest && options.adminAssetsDir);
+  const assetRoot = useAlternateRoot ? options.adminAssetsDir ?? distDir : distDir;
+  const relativePath = useAlternateRoot ? decoded.replace('/admin', '') || '/' : decoded;
+  const normalized = relativePath === '/' ? '/index.html' : relativePath;
+  let filePath = path.join(assetRoot, normalized);
 
   const exists = await fs.pathExists(filePath);
   if (!exists) {
@@ -184,8 +214,12 @@ const serveStatic = async (
   res.setHeader('Content-Type', mimeMap[ext] ?? 'application/octet-stream');
 
   if (ext === '.html') {
-    const html = await fs.readFile(filePath, 'utf8');
-    res.end(injectLiveReload(html));
+    let html = await fs.readFile(filePath, 'utf8');
+    html = injectLiveReload(html);
+    if (isAdminRequest) {
+      html = injectRuntimeConfig(html, options.runtimeConfig);
+    }
+    res.end(html);
     return;
   }
 
@@ -197,10 +231,31 @@ const serveStatic = async (
   stream.pipe(res);
 };
 
-export const startDevServer = ({ distDir, port, logger, adminService, paths }: DevServerOptions): DevServer => {
+export const startDevServer = ({
+  distDir,
+  adminAssetsDir,
+  port,
+  logger,
+  adminService,
+  paths,
+  runtimeConfig,
+}: DevServerOptions): DevServer => {
   const clients = new Set<LiveReloadClient>();
+  const runtimeState: AdminRuntimeConfig = { ...runtimeConfig };
 
   const server = http.createServer(async (req, res) => {
+    const requestUrl = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+
+    if (requestUrl.pathname === '/__ual/healthz') {
+      respondJson(res, 200, { ok: true, ts: Date.now() });
+      return;
+    }
+
+    if (requestUrl.pathname === '/__ual/runtime' && req.method === 'GET') {
+      respondJson(res, 200, runtimeState);
+      return;
+    }
+
     if ((req.url ?? '').startsWith('/__ual/live')) {
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -213,7 +268,7 @@ export const startDevServer = ({ distDir, port, logger, adminService, paths }: D
       return;
     }
 
-    if ((req.url ?? '').startsWith('/__ual/api')) {
+    if (requestUrl.pathname.startsWith('/__ual/api')) {
       try {
         const handled = await handleAdminApi(req, res, adminService, paths);
         if (handled) {
@@ -227,7 +282,7 @@ export const startDevServer = ({ distDir, port, logger, adminService, paths }: D
     }
 
     try {
-      await serveStatic(req, res, distDir);
+      await serveStatic(req, res, distDir, { adminAssetsDir, runtimeConfig: runtimeState });
     } catch (error) {
       logger.error('Error serving request', error);
       res.statusCode = 500;
@@ -256,6 +311,10 @@ export const startDevServer = ({ distDir, port, logger, adminService, paths }: D
       });
     });
 
-  return { notifyReload, close };
+  const updateRuntimeConfig = (patch: Partial<AdminRuntimeConfig>): void => {
+    Object.assign(runtimeState, patch);
+  };
+
+  return { notifyReload, close, updateRuntimeConfig };
 };
 

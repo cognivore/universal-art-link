@@ -17,7 +17,10 @@ const UAL_EDITOR = (() => {
     schemaMap: new Map(),
     content: null,
     selectedPage: 0,
-    previewBase: (typeof window !== 'undefined' && window.UAL_EDITOR_CONFIG?.previewBase) || 'http://localhost:4173',
+    previewVisible: true,
+    previewDevice: 'desktop',
+    previewVersion: Date.now(),
+    previewBase: config.previewBase ?? window.location.origin,
     rebuildPromise: null,
     rebuildResolve: null
   };
@@ -51,8 +54,7 @@ const UAL_EDITOR = (() => {
   // Listen to dev server rebuild notifications
   (() => {
     try {
-      if (typeof EventSource === 'undefined') return;
-      const previewBase = state.previewBase ?? 'http://localhost:4173';
+      const previewBase = state.previewBase ?? window.location.origin;
       const baseUrl = previewBase.endsWith('/') ? previewBase.slice(0, -1) : previewBase;
       const liveReloadUrl = `${baseUrl}/__ual/live`;
       const liveSource = new EventSource(liveReloadUrl);
@@ -62,7 +64,7 @@ const UAL_EDITOR = (() => {
         }
       });
       liveSource.addEventListener('error', () => {
-        // Silently handle EventSource errors
+        // Silently handle EventSource errors (server may not be running)
       });
     } catch (error) {
       // EventSource not supported or failed to initialize
@@ -152,6 +154,37 @@ const UAL_EDITOR = (() => {
     if (!base) return key;
     if (!key) return base;
     return `${base}.${key}`;
+  };
+
+  const getSelectedPage = () => state.content?.pages?.[state.selectedPage];
+
+  const normalizeSlug = (slug) => {
+    if (!slug) return '/';
+    return slug.startsWith('/') ? slug : `/${slug}`;
+  };
+
+  const buildPreviewUrl = () => {
+    const base = state.previewBase ?? window.location.origin;
+    const trimmedBase = base.endsWith('/') ? base.slice(0, -1) : base;
+    const slug = normalizeSlug(getSelectedPage()?.data?.slug ?? '/');
+    const version = state.previewVersion ?? 0;
+    const url = `${trimmedBase}${slug}`;
+    if (!version) {
+      return url;
+    }
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}v=${version}`;
+  };
+
+  const syncPreviewFrame = (force = false) => {
+    if (!state.previewVisible) return;
+    const frame = root.querySelector('[data-preview-frame]');
+    if (!frame) return;
+    const nextUrl = buildPreviewUrl();
+    if (force || frame.dataset.loadedUrl !== nextUrl) {
+      frame.dataset.loadedUrl = nextUrl;
+      frame.src = nextUrl;
+    }
   };
 
   const markDirty = () => {
@@ -268,9 +301,11 @@ const UAL_EDITOR = (() => {
       state.saving = false;
       state.dirty = false;
       setStatus('Content saved, rebuilding site…', 'muted');
-      // Wait for the dev server rebuild to complete
+      // Wait for the dev server rebuild to complete before refreshing preview
       await waitForRebuild();
-      setStatus('Site rebuilt successfully', 'success');
+      state.previewVersion = Date.now();
+      syncPreviewFrame(true);
+      setStatus('Preview updated', 'success');
     } catch (error) {
       state.saving = false;
       setStatus(error instanceof Error ? error.message : String(error), 'error');
@@ -574,6 +609,45 @@ const UAL_EDITOR = (() => {
     `;
   };
 
+  const renderPreviewPane = () => {
+    if (!state.previewVisible) {
+      return '';
+    }
+    const slug = normalizeSlug(getSelectedPage()?.data?.slug ?? '/');
+    const deviceButtons = ['desktop', 'tablet', 'mobile']
+      .map((device) => {
+        const active = state.previewDevice === device ? 'is-active' : '';
+        const label = device === 'desktop' ? 'Desktop' : device === 'tablet' ? 'Tablet' : 'Mobile';
+        return `<button type="button" class="${active}" data-action="set-preview-device" data-device="${device}">${label}</button>`;
+      })
+      .join('');
+    const iframeClasses = ['ual-preview__iframe'];
+    if (state.previewDevice === 'tablet') {
+      iframeClasses.push('ual-preview__iframe--tablet');
+    } else if (state.previewDevice === 'mobile') {
+      iframeClasses.push('ual-preview__iframe--mobile');
+    }
+    return `
+      <section class="ual-editor__pane ual-editor__pane--preview">
+        <div class="ual-preview__header">
+          <div>
+            <p class="ual-chip">Preview</p>
+            <p class="ual-muted">${escapeHtml(slug)}</p>
+          </div>
+          <div class="ual-editor__actions">
+            <div class="ual-preview__device">
+              ${deviceButtons}
+            </div>
+            <button type="button" class="ual-editor__button ual-editor__button--ghost" data-action="reload-preview">Reload</button>
+          </div>
+        </div>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:1rem;">
+          <iframe class="${iframeClasses.join(' ')}" data-preview-frame title="Site preview"></iframe>
+        </div>
+      </section>
+    `;
+  };
+
   const renderStatus = () => {
     const statusEl = root.querySelector('[data-editor-status]');
     if (!statusEl) return;
@@ -602,6 +676,11 @@ const UAL_EDITOR = (() => {
       return;
     }
     root.classList.remove('ual-editor--hidden');
+    const surfaceClasses = ['ual-editor__surface'];
+    if (!state.previewVisible) {
+      surfaceClasses.push('ual-editor__surface--stack');
+    }
+    const previewPane = state.previewVisible ? renderPreviewPane() : '';
     root.innerHTML = `
       <div class="ual-editor">
         <div class="ual-editor__header">
@@ -610,24 +689,27 @@ const UAL_EDITOR = (() => {
             <p class="ual-editor__status" data-editor-status></p>
           </div>
           <div class="ual-editor__actions">
+            <button type="button" class="ual-editor__button" data-action="toggle-preview">${state.previewVisible ? 'Hide preview' : 'Show preview'}</button>
             <button type="button" class="ual-editor__button" data-action="refresh">Refresh</button>
             <button type="button" class="ual-editor__button ual-editor__button--primary" data-action="save" ${
               state.saving ? 'disabled' : ''
             }>${state.saving ? 'Saving…' : 'Save changes'}</button>
           </div>
         </div>
-        <div class="ual-editor__grid">
-          <aside class="ual-editor__sidebar">
+        <div class="${surfaceClasses.join(' ')}">
+          <aside class="ual-editor__pane ual-editor__pane--sidebar">
             ${renderSitePanel()}
             ${renderPagesPanel()}
           </aside>
-          <section class="ual-editor__main">
+          <section class="ual-editor__pane ual-editor__pane--main">
             ${renderPageDetail()}
           </section>
+          ${previewPane}
         </div>
       </div>
     `;
     renderStatus();
+    syncPreviewFrame();
   };
 
   const ensureSelectedPage = () => {
@@ -685,6 +767,18 @@ const UAL_EDITOR = (() => {
         return;
       case 'save':
         saveContent();
+        return;
+      case 'toggle-preview':
+        state.previewVisible = !state.previewVisible;
+        render();
+        return;
+      case 'reload-preview':
+        state.previewVersion = Date.now();
+        syncPreviewFrame(true);
+        return;
+      case 'set-preview-device':
+        state.previewDevice = button.dataset.device ?? 'desktop';
+        render();
         return;
       case 'select-page':
         state.selectedPage = Number(button.dataset.index ?? 0);

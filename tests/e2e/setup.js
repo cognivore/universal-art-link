@@ -44,28 +44,49 @@ export async function startTestServer(testDir) {
   const { createPathConfig } = await import('../../build/lib/paths.js');
   const { log } = await import('../../build/lib/logger.js');
 
-  // Build the site first
+  const projectRoot = join(__dirname, '..', '..');
+  const paths = createPathConfig(testDir);
+
+  // Use pre-built admin assets from the project root (not from temp test dir)
+  const projectPaths = createPathConfig(projectRoot);
+  const adminAssetsExist = await fs.pathExists(projectPaths.adminAppDistDir);
+
+  if (!adminAssetsExist) {
+    console.warn('⚠️  Admin assets not found. Run `pnpm admin:build` first for full e2e testing.');
+  }
+
+  // Build the site
   const buildResult = await buildSite({
     rootDir: testDir,
     invalidateTemplates: true
   });
 
-  const paths = createPathConfig(testDir);
   const adminService = new AdminService(testDir, log);
 
   // Find an available port
   const port = 4173 + Math.floor(Math.random() * 1000);
 
+  const runtimeConfig = {
+    previewBaseUrl: `http://localhost:${port}`,
+    previewHealthPath: '/__ual/healthz',
+    apiBaseUrl: '/__ual/api',
+    adminBaseUrl: `http://localhost:${port}/admin`,
+    strapiUrl: process.env.UAL_STRAPI_URL ?? 'http://localhost:1337',
+    previewPaths: buildResult.previewPaths,
+  };
+
   const server = startDevServer({
     distDir: buildResult.outputDir,
+    adminAssetsDir: projectPaths.adminAppDistDir, // Use project root admin assets
     port,
     logger: log,
     adminService,
     paths,
+    runtimeConfig,
   });
 
   // Wait a bit for server to start
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise(resolve => setTimeout(resolve, 1000));
 
   console.log(`Test server started on http://localhost:${port}`);
 

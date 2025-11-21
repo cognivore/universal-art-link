@@ -15,6 +15,7 @@ export type BuildOptions = {
 export type BuildResult = {
   readonly pages: number;
   readonly outputDir: string;
+  readonly previewPaths: ReadonlyArray<string>;
 };
 
 const slugToOutputPath = (slug: string): string => {
@@ -117,6 +118,17 @@ const copyIfExists = async (source: string, destination: string): Promise<void> 
   await fs.copy(source, destination, { overwrite: true });
 };
 
+const copyAdminInterface = async (paths: PathConfig): Promise<void> => {
+  const destination = path.join(paths.outputDir, 'admin');
+  const modernBundle = paths.adminAppDistDir;
+  if (await fs.pathExists(modernBundle)) {
+    await fs.copy(modernBundle, destination, { overwrite: true });
+    return;
+  }
+  await copyIfExists(paths.adminDir, destination);
+  await copyIfExists(paths.adminSharedDir, path.join(destination, 'shared'));
+};
+
 const buildNavigation = (
   config: SiteConfig,
   depth: number,
@@ -197,9 +209,9 @@ export const buildSite = async ({ rootDir, outDir, invalidateTemplates }: BuildO
   await copyIfExists(paths.assetsDir, path.join(paths.outputDir, 'assets'));
   await copyIfExists(paths.stylesDir, path.join(paths.outputDir, 'styles'));
   await copyIfExists(paths.scriptsDir, path.join(paths.outputDir, 'scripts'));
-  await copyIfExists(paths.adminDir, path.join(paths.outputDir, 'admin'));
-  await copyIfExists(paths.adminSharedDir, path.join(paths.outputDir, 'admin', 'shared'));
+  await copyAdminInterface(paths);
 
-  return { pages: rendered.length, outputDir: paths.outputDir };
+  const previewPaths = pages.map((page) => page.slug);
+  return { pages: rendered.length, outputDir: paths.outputDir, previewPaths };
 };
 

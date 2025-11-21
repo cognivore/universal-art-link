@@ -3,20 +3,45 @@ import path from 'node:path';
 import { buildSite } from '../lib/build.js';
 import { log } from '../lib/logger.js';
 import { createPathConfig } from '../lib/paths.js';
-import { startDevServer } from '../lib/devServer.js';
+import { startDevServer, type AdminRuntimeConfig } from '../lib/devServer.js';
 import { AdminService } from '../lib/adminService.js';
+import { buildAdminFrontend, startAdminWatcher } from '../lib/adminFrontend.js';
 
 type DevOptions = {
   readonly port?: number;
+  readonly strapiUrl?: string;
 };
 
-export const runDevCommand = async ({ port = 4173 }: DevOptions = {}): Promise<void> => {
+export const runDevCommand = async ({ port = 4173, strapiUrl }: DevOptions = {}): Promise<void> => {
   const rootDir = process.cwd();
   const paths = createPathConfig(rootDir);
 
-  await buildSite({ rootDir, invalidateTemplates: true });
+  const resolvedStrapiUrl = strapiUrl ?? process.env.UAL_STRAPI_URL ?? 'http://localhost:1337';
+
+  await buildAdminFrontend(paths, log);
+  const adminWatcher = await startAdminWatcher(paths, log);
+
+  const buildResult = await buildSite({ rootDir, invalidateTemplates: true });
   const adminService = new AdminService(rootDir, log);
-  const server = startDevServer({ distDir: paths.outputDir, port, logger: log, adminService, paths });
+
+  const runtimeConfig: AdminRuntimeConfig = {
+    previewBaseUrl: `http://localhost:${port}`,
+    previewHealthPath: '/__ual/healthz',
+    apiBaseUrl: '/__ual/api',
+    adminBaseUrl: `http://localhost:${port}/admin`,
+    strapiUrl: resolvedStrapiUrl,
+    previewPaths: buildResult.previewPaths,
+  };
+
+  const server = startDevServer({
+    distDir: paths.outputDir,
+    adminAssetsDir: paths.adminAppDistDir,
+    port,
+    logger: log,
+    adminService,
+    paths,
+    runtimeConfig,
+  });
 
   const watcher = chokidar.watch(
     [
@@ -41,8 +66,9 @@ export const runDevCommand = async ({ port = 4173 }: DevOptions = {}): Promise<v
     }
     building = true;
     try {
-      await buildSite({ rootDir, invalidateTemplates: true });
+      const nextBuild = await buildSite({ rootDir, invalidateTemplates: true });
       log.success('Site rebuilt');
+      server.updateRuntimeConfig({ previewPaths: nextBuild.previewPaths });
       server.notifyReload();
     } catch (error) {
       log.error('Rebuild failed', error);
@@ -61,8 +87,7 @@ export const runDevCommand = async ({ port = 4173 }: DevOptions = {}): Promise<v
   });
 
   const shutdown = async (): Promise<void> => {
-    await watcher.close();
-    await server.close();
+    await Promise.all([watcher.close(), server.close(), adminWatcher?.close()]);
     log.info('dev server stopped');
     process.exit(0);
   };
