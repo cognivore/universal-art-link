@@ -431,23 +431,35 @@ a {
   gap: var(--space-sm);
 }
 
-.blog-post__cover {
+/* Mobile full-bleed images for editorial impact */
+.blog-post__cover,
+.project-block figure,
+.project-block .ual-media,
+.blog-post__body figure,
+.blog-post__body .ual-media {
   margin-left: calc(var(--space-sm) * -1);
   margin-right: calc(var(--space-sm) * -1);
 }
 
-.blog-post__cover img {
+.blog-post__cover img,
+.project-block figure img,
+.blog-post__body figure img {
   width: 100%;
   display: block;
 }
 
 @media (min-width: var(--bp-md)) {
-  .blog-post__cover {
+  .blog-post__cover,
+  .project-block figure,
+  .project-block .ual-media,
+  .blog-post__body figure,
+  .blog-post__body .ual-media {
     margin-left: 0;
     margin-right: 0;
   }
   
-  .blog-post__cover img {
+  .blog-post__cover img,
+  .blog-post__body figure img {
     border-radius: 1.5rem;
   }
 }
