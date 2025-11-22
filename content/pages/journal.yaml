@@ -13,9 +13,8 @@ journalPosts:
     blocks:
       - type: text
         title: Mapping neon to jacquard
-        body: >
-          We layered additive primaries over desaturated underpaintings, then back-lit the swatches to
-          recreate moisture sheen. The constraint—three inks only—forced brutal hierarchy decisions.
+        body: |
+          We layered additive primaries over desaturated underpaintings, then back-lit the swatches to recreate moisture sheen. The constraint—three inks only—forced brutal hierarchy decisions.
       - type: image
         media:
           src: /assets/project-orbit-2.svg
@@ -30,14 +29,32 @@ journalPosts:
       src: /assets/project-orbit-3.svg
       alt: Diffraction patterns on silk
     blocks:
+      - type: image-grid
+        items:
+          - media:
+              src: https://cards.scryfall.io/normal/front/e/0/e0ef33dd-5f6d-48fa-8ef6-a8092868d50f.jpg?1759144844
+              alt: ""
+            caption: Figure of vanilla
+          - media:
+              src: https://cards.scryfall.io/normal/front/b/2/b2d9d5ca-7e15-437a-bdfc-5972b42148fe.jpg?1759144812
+              alt: ""
+              focalPoint: center
+            caption: Lorwyn is so back
+          - media:
+              src: https://cards.scryfall.io/normal/front/f/e/fe3a421d-07b6-4b94-b177-aec44c7fe689.jpg?1759144840
+              alt: ""
+              focalPoint: center
+            caption: Will we have a textless version of this?
       - type: text
         title: Project brief
-        body: >
-          We wanted a tactile diffraction grating without the cold austerity of brushed aluminum.
-          Silk took the dyes beautifully, but stretching introduced unpredictable warp, so we leaned into it.
+        body: |
+          We wanted a tactile diffraction grating without the cold austerity of brushed aluminum. Silk took the dyes beautifully, but stretching introduced unpredictable warp, so we leaned into it.
       - type: quote
         quote: Keep the interference visible enough to feel alive, but soft enough for retail sightlines.
         cite: Orbit Creative Director
+      - type: text
+        title: ""
+        body: ""
   - id: vol-05
     title: Vol. 05 — Letterpress grid prototyping
     slug: /journal/letterpress-grid
@@ -49,9 +66,8 @@ journalPosts:
     blocks:
       - type: text
         title: Why letterpress
-        body: >
-          The grid logic becomes obvious when you physically shuffle slugs on a press bed.
-          Every breakpoint is a literal spacer, which then informs the CSS clamp ranges we ship.
+        body: |
+          The grid logic becomes obvious when you physically shuffle slugs on a press bed. Every breakpoint is a literal spacer, which then informs the CSS clamp ranges we ship.
       - type: image-grid
         items:
           - media:
