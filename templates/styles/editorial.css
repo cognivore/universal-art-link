@@ -306,13 +306,55 @@ a {
 
 .image-grid {
   display: grid;
-  gap: var(--space-md);
+  gap: var(--space-sm);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
-@media (min-width: var(--bp-md)) {
-  .image-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.image-grid__item {
+  position: relative;
+  border-radius: 1.75rem;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  min-height: 220px;
+  isolation: isolate;
+}
+
+.image-grid__item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  aspect-ratio: 4 / 3;
+  display: block;
+  transition: transform 320ms ease;
+}
+
+.image-grid__item:hover img {
+  transform: scale(1.02);
+}
+
+.image-grid__item--left img {
+  object-position: 20% 50%;
+}
+
+.image-grid__item--center img {
+  object-position: 50% 50%;
+}
+
+.image-grid__item--right img {
+  object-position: 80% 50%;
+}
+
+.image-grid__caption {
+  position: absolute;
+  inset: auto var(--space-sm) var(--space-sm);
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg);
+  box-shadow: 0 1.25rem 2.25rem rgba(0, 0, 0, 0.12);
 }
 
 .quote {

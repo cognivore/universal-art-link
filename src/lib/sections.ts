@@ -87,6 +87,22 @@ const renderProjectsGrid = (section: Section & { type: 'projects-grid' }, option
   </section>`;
 };
 
+const renderImageGridBlock = (block: Extract<ProjectBlock, { type: 'image-grid' }>): string => {
+  const items = block.items
+    .map((item) => {
+      const focal = item.media.focalPoint ?? 'center';
+      return `<figure class="image-grid__item image-grid__item--${focal}">
+        <img src="${escapeHtml(item.media.src)}" alt="${escapeHtml(item.media.alt ?? '')}" loading="lazy" />
+        ${optional(Boolean(item.caption), () => `<figcaption class="image-grid__caption">${escapeHtml(item.caption ?? '')}</figcaption>`)}
+      </figure>`;
+    })
+    .join('\n');
+
+  return `<div class="project-block image-grid">
+    ${items}
+  </div>`;
+};
+
 const renderContentBlock = (block: ProjectBlock): string => {
   switch (block.type) {
     case 'text':
@@ -100,16 +116,7 @@ const renderContentBlock = (block: ProjectBlock): string => {
         ${optional(Boolean(block.caption), () => `<figcaption class="micro-label">${escapeHtml(block.caption ?? '')}</figcaption>`)}
       </div>`;
     case 'image-grid':
-      return `<div class="project-block image-grid">
-        ${block.items
-          .map(
-            (item) => `<figure>
-              ${renderMedia(item.media.src, item.media.alt)}
-              ${optional(Boolean(item.caption), () => `<figcaption class="micro-label">${escapeHtml(item.caption ?? '')}</figcaption>`)}
-            </figure>`,
-          )
-          .join('')}
-      </div>`;
+      return renderImageGridBlock(block);
     case 'quote':
       return `<blockquote class="project-block quote">
         <p>“${escapeHtml(block.quote)}”</p>
