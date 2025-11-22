@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
@@ -13,13 +13,14 @@ import { PreviewPane } from '../preview/PreviewPane';
 import { getByPath } from './helpers';
 import { StudioNav, type StudioNavView } from './StudioNav';
 import { useConfirm } from '../../hooks/useConfirm';
+import { BlogPostEditor } from './BlogPostEditor';
 
 export const ContentStudio = () => {
   const runtimeConfig = useMemo(() => getRuntimeConfig(), []);
   const studio = useContentStudio(runtimeConfig);
   const { confirm, dialog } = useConfirm();
   const [navView, setNavView] = useState<StudioNavView>('content');
-  const [pageTab, setPageTab] = useState<'details' | 'sections'>('details');
+  const [pageTab, setPageTab] = useState<'details' | 'sections' | 'post'>('details');
 
   const handleDeletePage = async () => {
     const confirmed = await confirm({
@@ -86,6 +87,18 @@ export const ContentStudio = () => {
   const getValue = (path: string) => getByPath(studio.state.content!, path);
   const pageTitle = String(selectedPage?.data?.title ?? 'Untitled page');
   const pageBasePath = `pages.${studio.state.selectedPage}.data`;
+  const isJournalPage = selectedPage?.data?.layout === 'journal';
+  const journalPosts = Array.isArray(selectedPage?.data?.journalPosts) ? (selectedPage.data.journalPosts as Record<string, unknown>[]) : [];
+  const selectedJournalPostId = studio.state.selectedJournalPostId;
+  const selectedPostIndex =
+    selectedJournalPostId && journalPosts.length
+      ? journalPosts.findIndex((post) => String(post.id) === selectedJournalPostId)
+      : -1;
+  const selectedPost = selectedPostIndex >= 0 ? (journalPosts[selectedPostIndex] as Record<string, unknown>) : null;
+  const postBasePath = selectedPostIndex >= 0 ? `${pageBasePath}.journalPosts.${selectedPostIndex}` : null;
+
+  // Auto-switch away from 'post' tab when navigating to non-journal pages
+  const effectivePageTab = !isJournalPage && pageTab === 'post' ? 'details' : pageTab;
 
   return (
     <div className="flex flex-col gap-6">
@@ -169,6 +182,11 @@ export const ContentStudio = () => {
                           <CardTitle>{pageTitle}</CardTitle>
                         </div>
                         <div className="flex items-center gap-2">
+                      {isJournalPage ? (
+                        <Button size="sm" onClick={() => studio.addJournalPost()} data-testid="add-post-button">
+                          New post
+                        </Button>
+                      ) : null}
                           <Button variant="outline" size="sm" onClick={handleDeletePage} disabled={studio.state.content.pages.length <= 1}>
                             Delete page
                           </Button>
@@ -176,10 +194,11 @@ export const ContentStudio = () => {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <Tabs value={pageTab} onValueChange={(value) => setPageTab(value as 'details' | 'sections')}>
+                      <Tabs value={effectivePageTab} onValueChange={(value) => setPageTab(value as 'details' | 'sections' | 'post')}>
                         <TabsList>
                           <TabsTrigger value="details">Page details</TabsTrigger>
                           <TabsTrigger value="sections">Sections</TabsTrigger>
+                          {isJournalPage ? <TabsTrigger value="post">Edit post</TabsTrigger> : null}
                         </TabsList>
                         <TabsContent value="details" className="space-y-4">
                           <SchemaForm
@@ -208,8 +227,23 @@ export const ContentStudio = () => {
                             onRemoveSection={handleRemoveSection}
                             onMoveSection={studio.moveSection}
                             onConfirmRemove={handleConfirmRemoveItem}
+                            selectedJournalPostId={selectedJournalPostId}
+                            onSelectJournalPost={(postId) => studio.selectJournalPost(postId)}
                           />
                         </TabsContent>
+                        {isJournalPage ? (
+                          <TabsContent value="post">
+                            <BlogPostEditor
+                              basePath={postBasePath}
+                              post={selectedPost}
+                              getValue={getValue}
+                              onFieldChange={studio.updateField}
+                              onListChange={studio.modifyList}
+                              onToggleGroup={studio.toggleGroup}
+                              onCreatePost={studio.addJournalPost}
+                            />
+                          </TabsContent>
+                        ) : null}
                       </Tabs>
                     </CardContent>
                   </Card>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AdminRuntimeConfig } from '../../lib/runtime-config';
 import { getPreviewCandidates } from '../../lib/runtime-config';
 import { clone, buildSchemaMap, buildSectionTemplate, deleteByPath, getByPath, joinPath, setByPath } from './helpers';
-import type { ContentPayload, EditorStatus, SchemaDefinition, SectionDefinition } from './types';
+import type { ContentPage, ContentPayload, EditorStatus, SchemaDefinition, SectionDefinition } from './types';
 
 type EditorState = {
   readonly loading: boolean;
@@ -17,6 +17,7 @@ type EditorState = {
   readonly previewVisible: boolean;
   readonly previewDevice: 'desktop' | 'tablet' | 'mobile';
   readonly previewVersion: number;
+  readonly selectedJournalPostId: string | null;
 };
 
 const initialState: EditorState = {
@@ -32,11 +33,81 @@ const initialState: EditorState = {
   previewVisible: true,
   previewDevice: 'desktop',
   previewVersion: Date.now(),
+  selectedJournalPostId: null,
 };
 
 type LoadResponse = {
   readonly schema: SchemaDefinition;
   readonly content: ContentPayload;
+};
+
+const randomId = (): string => {
+  const globalCrypto = globalThis?.crypto;
+  if (globalCrypto && typeof globalCrypto.randomUUID === 'function') {
+    return globalCrypto.randomUUID();
+  }
+  return `post-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+};
+
+const createJournalPostTemplate = (): Record<string, unknown> => {
+  const id = randomId();
+  const slugSegment = id.slice(0, 8);
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    id,
+    title: 'Untitled post',
+    slug: `/journal/${slugSegment}`,
+    excerpt: '',
+    publishedAt: today,
+    coverImage: { src: '', alt: '', focalPoint: 'center' },
+    blocks: [
+      {
+        type: 'text',
+        title: 'New block',
+        body: '',
+      },
+    ],
+  };
+};
+
+const getJournalPostsFromPage = (page: ContentPage | undefined): Record<string, unknown>[] => {
+  const data = page?.data as Record<string, unknown> | undefined;
+  const posts = data?.['journalPosts'];
+  return Array.isArray(posts) ? (posts as Record<string, unknown>[]) : [];
+};
+
+const getFirstJournalPostId = (page: ContentPage | undefined): string | null => {
+  const posts = getJournalPostsFromPage(page);
+  const firstId = posts[0]?.['id'];
+  return typeof firstId === 'string' ? firstId : null;
+};
+
+const ensureJournalPostsArray = (page: ContentPage): Record<string, unknown>[] => {
+  const data = page.data as Record<string, unknown>;
+  if (!Array.isArray(data['journalPosts'])) {
+    data['journalPosts'] = [];
+  }
+  return data['journalPosts'] as Record<string, unknown>[];
+};
+
+const linkPostToBlogRoll = (page: ContentPage, postId: string): void => {
+  const data = page.data as Record<string, unknown>;
+  const sections = data['sections'];
+  if (!Array.isArray(sections)) {
+    return;
+  }
+  const blogRoll = (sections as Record<string, unknown>[]).find((section) => section?.['type'] === 'blog-roll');
+  if (!blogRoll) {
+    return;
+  }
+  if (!Array.isArray(blogRoll['posts'])) {
+    blogRoll['posts'] = [];
+  }
+  const references = blogRoll['posts'] as Array<Record<string, unknown>>;
+  if (references.some((entry) => entry?.['postId'] === postId)) {
+    return;
+  }
+  references.unshift({ postId });
 };
 
 type ListOperation =
@@ -98,6 +169,7 @@ export const useContentStudio = (config: AdminRuntimeConfig) => {
         content: payload.content,
         previewVersion: Date.now(),
         status: { message: 'Loaded content schema', variant: 'success' },
+        selectedJournalPostId: getFirstJournalPostId(payload.content.pages[0]),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load content';
@@ -170,10 +242,14 @@ export const useContentStudio = (config: AdminRuntimeConfig) => {
   );
 
   const selectPage = useCallback((index: number) => {
-    setState((prev) => ({
-      ...prev,
-      selectedPage: index,
-    }));
+    setState((prev) => {
+      const page = prev.content?.pages[index];
+      return {
+        ...prev,
+        selectedPage: index,
+        selectedJournalPostId: getFirstJournalPostId(page),
+      };
+    });
   }, []);
 
   const addPage = useCallback(() => {
@@ -182,11 +258,14 @@ export const useContentStudio = (config: AdminRuntimeConfig) => {
       const nextContent = clone(prev.content);
       const defaults = state.schema?.page?.defaults ?? { sections: [] };
       nextContent.pages.push({ data: clone(defaults) });
+      const newPageIndex = nextContent.pages.length - 1;
+      const newPage = nextContent.pages[newPageIndex];
       return {
         ...prev,
         content: nextContent,
         dirty: true,
-        selectedPage: nextContent.pages.length - 1,
+        selectedPage: newPageIndex,
+        selectedJournalPostId: getFirstJournalPostId(newPage),
       };
     });
   }, [state.schema]);
@@ -204,6 +283,7 @@ export const useContentStudio = (config: AdminRuntimeConfig) => {
         content: nextContent,
         dirty: true,
         selectedPage: nextIndex,
+        selectedJournalPostId: getFirstJournalPostId(nextContent.pages[nextIndex]),
       };
     });
   }, []);
@@ -246,6 +326,30 @@ export const useContentStudio = (config: AdminRuntimeConfig) => {
       const [item] = sections.splice(index, 1);
       sections.splice(nextIndex, 0, item);
       return { ...prev, content: nextContent, dirty: true };
+    });
+  }, []);
+
+  const selectJournalPost = useCallback((postId: string | null) => {
+    setState((prev) => ({ ...prev, selectedJournalPostId: postId }));
+  }, []);
+
+  const addJournalPost = useCallback(() => {
+    setState((prev) => {
+      if (!prev.content) return prev;
+      const nextContent = clone(prev.content);
+      const page = nextContent.pages[prev.selectedPage];
+      if (!page) return prev;
+      const posts = ensureJournalPostsArray(page);
+      const template = createJournalPostTemplate();
+      posts.unshift(template);
+      const newId = String(template.id);
+      linkPostToBlogRoll(page, newId);
+      return {
+        ...prev,
+        content: nextContent,
+        dirty: true,
+        selectedJournalPostId: newId,
+      };
     });
   }, []);
 
@@ -294,14 +398,24 @@ export const useContentStudio = (config: AdminRuntimeConfig) => {
 
   const previewPaths = useMemo(() => {
     if (!state.content) return previewCandidates;
-    const paths = state.content.pages.map((page) => {
-      const slug = String(page.data.slug ?? '/');
-      return slug.startsWith('/') ? slug : `/${slug}`;
+    const paths = state.content.pages.flatMap((page) => {
+      const pageSlug = String(page.data.slug ?? '/');
+      const normalized = pageSlug.startsWith('/') ? pageSlug : `/${pageSlug}`;
+      const postSlugs = Array.isArray(page.data.journalPosts)
+        ? (page.data.journalPosts as Record<string, unknown>[])
+            .map((post) => {
+              const slug = typeof post.slug === 'string' ? post.slug : '';
+              if (!slug) return null;
+              return slug.startsWith('/') ? slug : `/${slug}`;
+            })
+            .filter((slug): slug is string => Boolean(slug))
+        : [];
+      return [normalized, ...postSlugs];
     });
     if (!paths.includes('/')) {
       paths.unshift('/');
     }
-    return paths;
+    return Array.from(new Set(paths));
   }, [previewCandidates, state.content]);
 
   return {
@@ -316,6 +430,8 @@ export const useContentStudio = (config: AdminRuntimeConfig) => {
     addSection,
     removeSection,
     moveSection,
+    selectJournalPost,
+    addJournalPost,
     togglePreview,
     setPreviewDevice,
     bumpPreviewVersion,

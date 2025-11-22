@@ -19,7 +19,7 @@ Located under `content/pages/*.yaml`. Each page file contains:
 
 - `slug`: route (e.g. `/`, `/work`, `/project-name`).
 - `title` + optional `description`.
-- `layout`: `default`, `project`, `index-grid`, or `journal`.
+- `layout`: `default`, `project`, `index-grid`, `journal`, or `blog`.
 - `sections`: ordered blocks that drive the layout.
 
 ### Section types
@@ -31,6 +31,7 @@ Located under `content/pages/*.yaml`. Each page file contains:
 | `single-project`| Case study blocks mixing text, imagery, quotes, embeds.                      |
 | `text-columns`  | 2–3 column manifesto/about copy.                                             |
 | `list-section`  | Lists for press, clients, journal entries.                                   |
+| `blog-roll`     | Auto-generated entry list that references structured journal posts.          |
 | `contact`       | Email CTA + optional form action.                                            |
 
 ### Adding a project card
@@ -70,7 +71,8 @@ universal-art-link deploy    # POST bundle to configured endpoint
 
 ### Schema-driven editor
 
-- `content/schema.json` defines the fields for site settings, pages, and section blocks.
+- `content/schema.json` defines the fields for site settings, pages, section blocks, and inline journal posts (stored under `journalPosts` on any page that uses the `journal` layout).
+- `journalPosts` can be edited entirely inside the CMS. Each post stores its own slug, cover image, publish date, excerpt, and the same block types that power case studies. The `blog-roll` section simply references these posts, so editors focus on composing content once and reordering entries visually.
 - The admin panels render these schemas into forms so editors can edit copy, add/reorder sections, update navigation, and tweak colors without seeing YAML—plus a live preview pane (when `pnpm cli dev` is running on `http://localhost:4173`) mirrors your changes.
 - Use the dropdown inside the editor to insert any section defined in the schema; unsupported/custom sections fall back to JSON editors.
 - Customize `content/schema.json` to expose new fields—no TypeScript changes required.

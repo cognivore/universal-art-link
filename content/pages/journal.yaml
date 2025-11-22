@@ -1,23 +1,75 @@
 slug: /journal
 title: Field Notes
 layout: journal
+journalPosts:
+  - id: vol-07
+    title: Vol. 07 — Cyberpunk and us
+    slug: /journal/cyberpunk-and-us
+    excerpt: Three-day study sprint translating neon alleys and rain-slick reflections into textiles.
+    publishedAt: 2025-11-04
+    coverImage:
+      src: /assets/project-orbit-1.svg
+      alt: Cyberpunk reflections collage
+    blocks:
+      - type: text
+        title: Mapping neon to jacquard
+        body: >
+          We layered additive primaries over desaturated underpaintings, then back-lit the swatches to
+          recreate moisture sheen. The constraint—three inks only—forced brutal hierarchy decisions.
+      - type: image
+        media:
+          src: /assets/project-orbit-2.svg
+          alt: Palette film strip
+        caption: Filmstrip of palette blends captured during the residency.
+  - id: vol-06
+    title: Vol. 06 — Silk diffraction studies
+    slug: /journal/silk-diffraction
+    excerpt: Messing with moiré interference on raw silk panels destined for a retail sculpture.
+    publishedAt: 2025-06-18
+    coverImage:
+      src: /assets/project-orbit-3.svg
+      alt: Diffraction patterns on silk
+    blocks:
+      - type: text
+        title: Project brief
+        body: >
+          We wanted a tactile diffraction grating without the cold austerity of brushed aluminum.
+          Silk took the dyes beautifully, but stretching introduced unpredictable warp, so we leaned into it.
+      - type: quote
+        quote: Keep the interference visible enough to feel alive, but soft enough for retail sightlines.
+        cite: Orbit Creative Director
+  - id: vol-05
+    title: Vol. 05 — Letterpress grid prototyping
+    slug: /journal/letterpress-grid
+    excerpt: Translating responsive layout breakpoints into analog letterpress experiments.
+    publishedAt: 2025-04-02
+    coverImage:
+      src: /assets/project-resonant.svg
+      alt: Letterpress lockup
+    blocks:
+      - type: text
+        title: Why letterpress
+        body: >
+          The grid logic becomes obvious when you physically shuffle slugs on a press bed.
+          Every breakpoint is a literal spacer, which then informs the CSS clamp ranges we ship.
+      - type: image-grid
+        items:
+          - media:
+              src: /assets/project-signal.svg
+              alt: Gridded lockup
+            caption: Lockup referencing tablet breakpoint.
+          - media:
+              src: /assets/project-dawn.svg
+              alt: Inked proofs
+            caption: Proofs arranged from mobile to desktop width.
 sections:
   - type: hero
     kicker: Journal
     title: Production notes, sketches, and textile research.
     subtitle: An ongoing log of palette experiments, typography tests, and cataloguing of physical references.
-  - type: list-section
+  - type: blog-roll
     title: Entries
-    items:
-      - label: Vol. 07 — Cyberpunk and us
-        detail: November 2025
-      - label: Vol. 06 — Silk diffraction studies
-        detail: June 2025
-      - label: Vol. 05 — Letterpress grid prototyping
-        detail: April 2025
-      - label: Vol. 04 — Gestural navigation on mobile
-        detail: January 2025
-      - label: Vol. 03 — Notes on serif pairings
-        detail: November 2024
-      - label: Vol. 00 — Disorient express
-        detail: January 2023
+    posts:
+      - postId: vol-07
+      - postId: vol-06
+      - postId: vol-05

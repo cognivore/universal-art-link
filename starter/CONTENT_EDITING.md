@@ -19,7 +19,7 @@ Located under `content/pages/*.yaml`. Each page file contains:
 
 - `slug`: route (e.g. `/`, `/work`, `/project-name`).
 - `title` + optional `description`.
-- `layout`: `default`, `project`, `index-grid`, or `journal`.
+- `layout`: `default`, `project`, `index-grid`, `journal`, or `blog`.
 - `sections`: ordered blocks that drive the layout.
 
 ### Section types
@@ -31,6 +31,7 @@ Located under `content/pages/*.yaml`. Each page file contains:
 | `single-project`| Case study blocks mixing text, imagery, quotes, embeds.                      |
 | `text-columns`  | 2–3 column manifesto/about copy.                                             |
 | `list-section`  | Lists for press, clients, journal entries.                                   |
+| `blog-roll`     | Auto-generated journal entry list referencing `journalPosts`.                |
 | `contact`       | Email CTA + optional form action.                                            |
 
 ### Adding a project card
@@ -70,8 +71,9 @@ universal-art-link deploy    # POST bundle to configured endpoint
 
 ### Schema-driven editor
 
-- `content/schema.json` enumerates the fields and section blocks available to editors.
+- `content/schema.json` enumerates the fields, section blocks, and inline journal posts (`journalPosts` on any journal page) available to editors.
 - Both admin experiences render that schema into forms so non-technical teammates can edit copy, navigation, and layout blocks, as well as reorder sections—plus a live preview pane mirrors the output when `pnpm cli dev` (on `http://localhost:4173`) is running.
 - Unsupported/custom sections fall back to JSON textareas—extend `schema.json` to expose more structured controls.
+- Journal posts can now be created inline with cover imagery, publish dates, and the same rich blocks used for case studies; the visible `blog-roll` simply references these posts so you only write once.
 
 If CLI commands fail, read the error message—it points to the file/field that needs attention.

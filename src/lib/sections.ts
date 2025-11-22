@@ -1,4 +1,4 @@
-import { Section, SingleProjectSection } from '../types/content.js';
+import { BlogPost, ProjectBlock, Section, SingleProjectSection } from '../types/content.js';
 
 const escapeHtml = (value: string): string =>
   value
@@ -17,6 +17,7 @@ const renderMedia = (src: string, alt: string, className = 'ual-media'): string 
 
 type RenderOptions = {
   readonly resolveLink: (href: string) => string;
+  readonly resolvePost?: (postId: string) => BlogPost | undefined;
 };
 
 const renderHero = (section: Section & { type: 'hero' }, options: RenderOptions): string => {
@@ -86,6 +87,46 @@ const renderProjectsGrid = (section: Section & { type: 'projects-grid' }, option
   </section>`;
 };
 
+const renderContentBlock = (block: ProjectBlock): string => {
+  switch (block.type) {
+    case 'text':
+      return `<div class="project-block stack">
+        ${optional(Boolean(block.title), () => `<h3>${escapeHtml(block.title ?? '')}</h3>`)}
+        <p class="measure">${escapeHtml(block.body)}</p>
+      </div>`;
+    case 'image':
+      return `<div class="project-block ${block.bleed ? 'project-block--bleed' : ''}">
+        ${renderMedia(block.media.src, block.media.alt)}
+        ${optional(Boolean(block.caption), () => `<figcaption class="micro-label">${escapeHtml(block.caption ?? '')}</figcaption>`)}
+      </div>`;
+    case 'image-grid':
+      return `<div class="project-block image-grid">
+        ${block.items
+          .map(
+            (item) => `<figure>
+              ${renderMedia(item.media.src, item.media.alt)}
+              ${optional(Boolean(item.caption), () => `<figcaption class="micro-label">${escapeHtml(item.caption ?? '')}</figcaption>`)}
+            </figure>`,
+          )
+          .join('')}
+      </div>`;
+    case 'quote':
+      return `<blockquote class="project-block quote">
+        <p>“${escapeHtml(block.quote)}”</p>
+        ${optional(Boolean(block.cite), () => `<footer>${escapeHtml(block.cite ?? '')}${optional(Boolean(block.role), () => ` — ${escapeHtml(block.role ?? '')}`)}</footer>`)}
+      </blockquote>`;
+    case 'embed':
+      return `<div class="project-block embed">
+        ${optional(Boolean(block.label), () => `<p class="micro-label">${escapeHtml(block.label ?? '')}</p>`)}
+        ${block.html}
+      </div>`;
+    default:
+      return '';
+  }
+};
+
+const renderProjectBlocks = (blocks: readonly ProjectBlock[]): string => blocks.map((block) => renderContentBlock(block)).join('\n');
+
 const renderSingleProject = (section: SingleProjectSection, _options: RenderOptions): string => {
   const header = `<header class="single-project__header stack">
     <p class="micro-label">${escapeHtml(section.role)} · ${escapeHtml(section.year)}</p>
@@ -94,45 +135,7 @@ const renderSingleProject = (section: SingleProjectSection, _options: RenderOpti
     ${optional(Boolean(section.credits?.length), () => `<p class="micro-label">Credits — ${section.credits!.map(escapeHtml).join(', ')}</p>`)}
   </header>`;
 
-  const blocks = section.blocks
-    .map((block) => {
-      switch (block.type) {
-        case 'text':
-          return `<div class="project-block stack">
-            ${optional(Boolean(block.title), () => `<h3>${escapeHtml(block.title ?? '')}</h3>`)}
-            <p class="measure">${escapeHtml(block.body)}</p>
-          </div>`;
-        case 'image':
-          return `<div class="project-block ${block.bleed ? 'project-block--bleed' : ''}">
-            ${renderMedia(block.media.src, block.media.alt)}
-            ${optional(Boolean(block.caption), () => `<figcaption class="micro-label">${escapeHtml(block.caption ?? '')}</figcaption>`)}
-          </div>`;
-        case 'image-grid':
-          return `<div class="project-block image-grid">
-            ${block.items
-              .map(
-                (item) => `<figure>
-                  ${renderMedia(item.media.src, item.media.alt)}
-                  ${optional(Boolean(item.caption), () => `<figcaption class="micro-label">${escapeHtml(item.caption ?? '')}</figcaption>`)}
-                </figure>`,
-              )
-              .join('')}
-          </div>`;
-        case 'quote':
-          return `<blockquote class="project-block quote">
-            <p>“${escapeHtml(block.quote)}”</p>
-            ${optional(Boolean(block.cite), () => `<footer>${escapeHtml(block.cite ?? '')}${optional(Boolean(block.role), () => ` — ${escapeHtml(block.role ?? '')}`)}</footer>`)}
-          </blockquote>`;
-        case 'embed':
-          return `<div class="project-block embed">
-            ${optional(Boolean(block.label), () => `<p class="micro-label">${escapeHtml(block.label ?? '')}</p>`)}
-            ${block.html}
-          </div>`;
-        default:
-          return '';
-      }
-    })
-    .join('\n');
+  const blocks = renderProjectBlocks(section.blocks);
 
   return `<section class="section single-project stack">
     ${header}
@@ -202,6 +205,57 @@ const renderContact = (section: Section & { type: 'contact' }, options: RenderOp
   </section>`;
 };
 
+const renderBlogRoll = (section: Section & { type: 'blog-roll' }, options: RenderOptions): string => {
+  const posts = section.posts ?? [];
+  const items = posts
+    .map((entry) => {
+      const post = entry.postId && options.resolvePost ? options.resolvePost(entry.postId) : null;
+      const href = post?.slug ? options.resolveLink(post.slug) : '#';
+      const title = post?.title ?? 'Untitled entry';
+      const detail = post?.publishedAt ?? '';
+      const excerpt = post?.excerpt ?? '';
+      const cover = post?.coverImage?.src ? `<div class="blog-entry__thumb"><img src="${escapeHtml(post.coverImage!.src)}" alt="${escapeHtml(post.coverImage!.alt ?? '')}" loading="lazy" /></div>` : '';
+      return `<a class="blog-entry" href="${escapeHtml(href)}">
+        ${cover}
+        <div class="blog-entry__content">
+          <div class="blog-entry__meta">
+            <span>${escapeHtml(detail)}</span>
+            ${entry.featured ? '<span class="micro-label">Featured</span>' : ''}
+          </div>
+          <h4>${escapeHtml(title)}</h4>
+          ${optional(Boolean(excerpt), () => `<p class="blog-entry__excerpt">${escapeHtml(excerpt ?? '')}</p>`)}
+        </div>
+      </a>`;
+    })
+    .join('\n');
+
+  return `<section class="section blog-roll stack">
+    <div class="section__header stack">
+      <p class="kicker">${escapeHtml(section.title)}</p>
+      ${optional(Boolean(section.intro), () => `<p class="measure">${escapeHtml(section.intro ?? '')}</p>`)}
+    </div>
+    <div class="blog-roll__entries">
+      ${items}
+    </div>
+  </section>`;
+};
+
+export const renderBlogPost = (post: BlogPost, options: RenderOptions): string => {
+  const cover = post.coverImage ? `<figure class="blog-post__cover">${renderMedia(post.coverImage.src, post.coverImage.alt)}${optional(Boolean(post.coverImage.alt), () => `<figcaption class="micro-label">${escapeHtml(post.coverImage.alt ?? '')}</figcaption>`)}</figure>` : '';
+  const blocks = renderProjectBlocks(post.blocks);
+  return `<article class="blog-post stack">
+    <header class="blog-post__header stack">
+      <p class="micro-label">${escapeHtml(post.publishedAt)}</p>
+      <h1 class="display">${escapeHtml(post.title)}</h1>
+      ${optional(Boolean(post.excerpt), () => `<p class="measure">${escapeHtml(post.excerpt ?? '')}</p>`)}
+    </header>
+    ${cover}
+    <div class="blog-post__body stack">
+      ${blocks}
+    </div>
+  </article>`;
+};
+
 const renderByType = (section: Section, options: RenderOptions): string => {
   switch (section.type) {
     case 'hero':
@@ -216,6 +270,8 @@ const renderByType = (section: Section, options: RenderOptions): string => {
       return renderListSection(section, options);
     case 'contact':
       return renderContact(section, options);
+    case 'blog-roll':
+      return renderBlogRoll(section, options);
     default:
       return '';
   }

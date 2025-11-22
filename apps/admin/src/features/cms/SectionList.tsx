@@ -4,6 +4,8 @@ import type { SchemaDefinition, ContentPage } from './types';
 import { SchemaForm } from './SchemaForm';
 import type { SectionDefinition } from './types';
 import { Textarea } from '../../components/ui/textarea';
+import { ProjectSectionEditor } from './ProjectSectionEditor';
+import { BlogRollEditor } from './BlogRollEditor';
 
 type ListOperation =
   | { type: 'add'; path: string; template: Record<string, unknown> }
@@ -23,6 +25,8 @@ type SectionListProps = {
   readonly onMoveSection: (index: number, direction: number) => void;
   readonly getValue: (path: string) => unknown;
   readonly onConfirmRemove?: (itemLabel: string) => Promise<boolean>;
+  readonly selectedJournalPostId?: string | null;
+  readonly onSelectJournalPost?: (postId: string) => void;
 };
 
 type SchemaFormProps = React.ComponentProps<typeof SchemaForm>;
@@ -40,8 +44,11 @@ export const SectionList = ({
   onMoveSection,
   getValue,
   onConfirmRemove,
+  selectedJournalPostId,
+  onSelectJournalPost,
 }: SectionListProps) => {
   const sections = Array.isArray(page?.data?.sections) ? page?.data.sections : [];
+  const journalPosts = Array.isArray(page?.data?.journalPosts) ? (page?.data?.journalPosts as Record<string, unknown>[]) : [];
   const availableSections = schema?.sections ?? [];
   const pickerId = `section-picker-${pageIndex}`;
 
@@ -80,6 +87,8 @@ export const SectionList = ({
           const def = schemaMap.get(String(section.type));
           const basePath = `pages.${pageIndex}.data.sections.${index}`;
           const isJsonMode = def?.mode === 'json';
+          const isProjectBuilder = def?.mode === 'project-builder';
+          const isBlogRoll = def?.mode === 'blog-roll';
           return (
             <div key={`${section.type}-${index}`} className="rounded-3xl border border-dashed p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -117,6 +126,27 @@ export const SectionList = ({
                     }}
                   />
                 </div>
+              ) : isProjectBuilder ? (
+                <ProjectSectionEditor
+                  basePath={basePath}
+                  getValue={getValue}
+                  onFieldChange={onFieldChange}
+                  onListChange={onListChange}
+                  onToggleGroup={onToggleGroup}
+                  onConfirmRemove={onConfirmRemove}
+                />
+              ) : isBlogRoll ? (
+                <BlogRollEditor
+                  basePath={basePath}
+                  section={section as Record<string, unknown>}
+                  posts={journalPosts}
+                  getValue={getValue}
+                  onFieldChange={onFieldChange}
+                  onListChange={onListChange}
+                  selectedPostId={selectedJournalPostId ?? null}
+                  onSelectPost={(postId) => onSelectJournalPost?.(postId)}
+                  onConfirmRemove={onConfirmRemove}
+                />
               ) : (
                 <SchemaForm basePath={basePath} fields={def?.fields} lists={def?.lists} groups={def?.groups} getValue={getValue} onFieldChange={onFieldChange} onListChange={onListChange} onToggleGroup={onToggleGroup} onConfirmRemove={onConfirmRemove} />
               )}

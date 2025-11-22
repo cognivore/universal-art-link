@@ -7,7 +7,6 @@ node_modules/
 build/
 dist/
 *.tsbuildinfo
-pnpm-lock.yaml
 
 # Editor
 .vscode/
@@ -25,6 +24,13 @@ Thumbs.db
 **/conf/deployment.rs
 priv/aws/credentials
 .ual/
+
+# E2E Test Diagnostics (temporary debugging artifacts)
+tests/e2e/*-diagnostic.test.js
+tests/e2e/minimal-*.test.js
+tests/e2e/debug-*.test.js
+tests/e2e/DEBUG_*.txt
+tests/e2e/DEBUG_*.md
 
 # Rust (legacy)
 target/

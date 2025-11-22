@@ -2,9 +2,9 @@ import fs from 'fs-extra';
 import path from 'node:path';
 import { createPathConfig, PathConfig } from './paths.js';
 import { loadPages, loadSiteConfig } from './contentLoader.js';
-import { renderSections } from './sections.js';
+import { renderBlogPost, renderSections } from './sections.js';
 import { clearTemplateCache, renderWithLayout } from './template.js';
-import { Page, SiteConfig } from '../types/content.js';
+import { BlogPost, Page, SiteConfig } from '../types/content.js';
 
 export type BuildOptions = {
   readonly rootDir: string;
@@ -136,7 +136,9 @@ const buildNavigation = (
 ): ReadonlyArray<{ readonly label: string; readonly href: string; readonly active: boolean }> =>
   config.navigation.map((item) => {
     const href = item.href.startsWith('/') ? slugToHref(item.href, depth) : item.href;
-    const active = item.href === currentSlug;
+    const isExact = item.href === currentSlug;
+    const isNested = item.href !== '/' && currentSlug?.startsWith(`${item.href}/`);
+    const active = Boolean(isExact || isNested);
     return { label: item.label, href, active };
   });
 
@@ -152,7 +154,8 @@ const renderPageToHtml = async (
 ): Promise<{ readonly html: string; readonly outputPath: string }> => {
   const depth = slugDepth(page.slug);
   const resolveLink = createLinkResolver(depth);
-  const renderedSections = renderSections(page.sections, { resolveLink });
+  const resolvePost = (postId: string): BlogPost | undefined => (page.journalPosts ?? []).find((post) => post.id === postId);
+  const renderedSections = renderSections(page.sections, { resolveLink, resolvePost });
   const themeVars = themeToCssVariables(site.theme);
 
   const metaTitle = `${page.title} · ${site.siteTitle}`;
@@ -186,6 +189,56 @@ const renderPageToHtml = async (
   return { html, outputPath };
 };
 
+const renderBlogPostPage = async (
+  post: BlogPost,
+  parentPage: Page,
+  site: SiteConfig,
+  paths: PathConfig,
+): Promise<{ readonly html: string; readonly outputPath: string }> => {
+  const depth = slugDepth(post.slug);
+  const resolveLink = createLinkResolver(depth);
+  const renderedBody = renderBlogPost(post, { resolveLink });
+  const themeVars = themeToCssVariables(site.theme);
+  const metaTitle = `${post.title} · ${site.siteTitle}`;
+  const canonical =
+    site.baseUrl.startsWith('http://') || site.baseUrl.startsWith('https://')
+      ? new URL(post.slug, site.baseUrl).toString()
+      : `${site.baseUrl.replace(/\/$/, '')}${post.slug}`;
+
+  const pageStub: Page = {
+    slug: post.slug,
+    title: post.title,
+    description: post.excerpt ?? parentPage.description ?? site.siteDescription,
+    layout: 'blog',
+    sections: [],
+    journalPosts: [],
+  };
+
+  const context = {
+    site,
+    page: pageStub,
+    meta: {
+      title: metaTitle,
+      description: pageStub.description ?? site.siteDescription,
+      canonicalUrl: canonical,
+    },
+    assets: {
+      styles: assetHref(depth, 'styles/editorial.css'),
+      scripts: assetHref(depth, 'scripts/app.js'),
+      base: relativeFromDepth(depth),
+    },
+    sections: [renderedBody],
+    themeVars,
+    navigation: buildNavigation(site, depth, post.slug),
+    socialLinks: buildSocial(site),
+    post,
+  };
+
+  const html = await renderWithLayout('blog', context, paths);
+  const outputPath = path.join(paths.outputDir, slugToOutputPath(post.slug));
+  return { html, outputPath };
+};
+
 export const buildSite = async ({ rootDir, outDir, invalidateTemplates }: BuildOptions): Promise<BuildResult> => {
   if (invalidateTemplates) {
     clearTemplateCache();
@@ -197,7 +250,17 @@ export const buildSite = async ({ rootDir, outDir, invalidateTemplates }: BuildO
   await fs.ensureDir(paths.outputDir);
   await fs.emptyDir(paths.outputDir);
 
-  const rendered = await Promise.all(pages.map((page) => renderPageToHtml(page, siteConfig, paths)));
+  const rendered: Array<{ html: string; outputPath: string }> = [];
+  const blogPreviewPaths: string[] = [];
+  for (const page of pages) {
+    rendered.push(await renderPageToHtml(page, siteConfig, paths));
+    if (Array.isArray(page.journalPosts)) {
+      for (const post of page.journalPosts) {
+        rendered.push(await renderBlogPostPage(post, page, siteConfig, paths));
+        blogPreviewPaths.push(post.slug);
+      }
+    }
+  }
 
   await Promise.all(
     rendered.map(async ({ html, outputPath }) => {
@@ -211,7 +274,7 @@ export const buildSite = async ({ rootDir, outDir, invalidateTemplates }: BuildO
   await copyIfExists(paths.scriptsDir, path.join(paths.outputDir, 'scripts'));
   await copyAdminInterface(paths);
 
-  const previewPaths = pages.map((page) => page.slug);
+  const previewPaths = [...pages.map((page) => page.slug), ...blogPreviewPaths];
   return { pages: rendered.length, outputDir: paths.outputDir, previewPaths };
 };
 

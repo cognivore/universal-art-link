@@ -25,6 +25,7 @@ const layoutFiles = [
   'project.hbs',
   'journal.hbs',
   'index-grid.hbs',
+  'blog.hbs',
 ];
 
 // Test 1: Handlebars syntax validation

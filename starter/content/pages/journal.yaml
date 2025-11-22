@@ -1,20 +1,39 @@
 slug: "/journal"
 title: Field Notes
 layout: journal
+journalPosts:
+  - id: vol-06
+    title: "Vol. 06 — Silk diffraction studies"
+    slug: "/journal/silk-diffraction"
+    excerpt: "Messing with moiré interference on raw silk panels destined for a retail sculpture."
+    publishedAt: "2025-06-18"
+    coverImage:
+      src: "/assets/project-orbit-3.svg"
+      alt: "Diffraction patterns on silk"
+    blocks:
+      - type: text
+        title: "Project brief"
+        body: "We wanted a tactile diffraction grating without the cold austerity of brushed aluminum. Silk took the dyes beautifully, but stretching introduced unpredictable warp, so we leaned into it."
+  - id: vol-05
+    title: "Vol. 05 — Letterpress grid prototyping"
+    slug: "/journal/letterpress-grid"
+    excerpt: "Translating responsive layout breakpoints into analog letterpress experiments."
+    publishedAt: "2025-04-02"
+    coverImage:
+      src: "/assets/project-resonant.svg"
+      alt: "Letterpress lockup"
+    blocks:
+      - type: text
+        title: "Why letterpress"
+        body: "The grid logic becomes obvious when you physically shuffle slugs on a press bed. Every breakpoint is a literal spacer, informing the CSS clamp ranges we ship."
 sections:
   - type: hero
     kicker: "Journal"
     title: "Production notes, sketches, and textile research."
     subtitle: "An ongoing log of palette experiments, typography tests, and cataloguing of physical references."
-  - type: list-section
+  - type: blog-roll
     title: "Entries"
-    items:
-      - label: "Vol. 06 — Silk diffraction studies"
-        detail: "June 2025"
-      - label: "Vol. 05 — Letterpress grid prototyping"
-        detail: "April 2025"
-      - label: "Vol. 04 — Gestural navigation on mobile"
-        detail: "January 2025"
-      - label: "Vol. 03 — Notes on serif pairings"
-        detail: "November 2024"
+    posts:
+      - postId: "vol-06"
+      - postId: "vol-05"
 

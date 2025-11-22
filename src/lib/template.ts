@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import path from 'node:path';
 import Handlebars from 'handlebars';
-import { Page, SiteConfig } from '../types/content.js';
+import { BlogPost, Page, SiteConfig } from '../types/content.js';
 import { PathConfig } from './paths.js';
 
 export type LayoutContext = {
@@ -21,6 +21,7 @@ export type LayoutContext = {
   readonly themeVars: string;
   readonly navigation: ReadonlyArray<{ readonly label: string; readonly href: string; readonly active: boolean }>;
   readonly socialLinks: ReadonlyArray<{ readonly label: string; readonly href: string }>;
+  readonly post?: BlogPost;
 };
 
 type TemplateCacheKey = `${string}:${string}`;

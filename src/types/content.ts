@@ -91,6 +91,18 @@ const ProjectBlockSchema = z.discriminatedUnion('type', [
   EmbedBlockSchema,
 ]);
 
+const BlogPostBlockSchema = ProjectBlockSchema;
+
+const BlogPostSchema = z.object({
+  id: z.string().min(1, 'Post ID required'),
+  title: z.string(),
+  slug: slugTransform,
+  excerpt: z.string().optional(),
+  publishedAt: z.string(),
+  coverImage: MediaSchema,
+  blocks: z.array(BlogPostBlockSchema).min(1, 'Add at least one block to the post'),
+});
+
 const SingleProjectSectionSchema = z.object({
   type: z.literal('single-project'),
   title: z.string(),
@@ -132,6 +144,20 @@ const ContactSectionSchema = z.object({
   formAction: z.string().optional(),
 });
 
+const BlogRollSectionSchema = z.object({
+  type: z.literal('blog-roll'),
+  title: z.string(),
+  intro: z.string().optional(),
+  posts: z
+    .array(
+      z.object({
+        postId: z.string().min(1, 'Post reference is required'),
+        featured: z.boolean().optional(),
+      }),
+    )
+    .default([]),
+});
+
 export const SectionSchema = z.discriminatedUnion('type', [
   HeroSectionSchema,
   ProjectsGridSectionSchema,
@@ -139,6 +165,7 @@ export const SectionSchema = z.discriminatedUnion('type', [
   TextColumnsSectionSchema,
   ListSectionSchema,
   ContactSectionSchema,
+  BlogRollSectionSchema,
 ]);
 
 const NavigationItemSchema = z.object({
@@ -178,8 +205,9 @@ export const PageSchema = z.object({
   slug: slugTransform,
   title: z.string(),
   description: z.string().optional(),
-  layout: z.enum(['default', 'project', 'index-grid', 'journal']).default('default'),
-  sections: z.array(SectionSchema).nonempty('Provide at least one section per page'),
+  layout: z.enum(['default', 'project', 'index-grid', 'journal', 'blog']).default('default'),
+  sections: z.array(SectionSchema).default([]),
+  journalPosts: z.array(BlogPostSchema).optional(),
 });
 
 export const SiteConfigSchema = z.object({
@@ -202,6 +230,8 @@ export type ListSection = z.infer<typeof ListSectionSchema>;
 export type ContactSection = z.infer<typeof ContactSectionSchema>;
 export type Section = z.infer<typeof SectionSchema>;
 export type ProjectBlock = z.infer<typeof ProjectBlockSchema>;
+export type BlogPostBlock = z.infer<typeof BlogPostBlockSchema>;
+export type BlogPost = z.infer<typeof BlogPostSchema>;
 export type Page = z.infer<typeof PageSchema>;
 export type SiteConfig = z.infer<typeof SiteConfigSchema>;
 export type ThemeConfig = z.infer<typeof ThemeSchema>;

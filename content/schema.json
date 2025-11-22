@@ -50,7 +50,8 @@
       "slug": "/untitled",
       "description": "",
       "layout": "default",
-      "sections": []
+      "sections": [],
+      "journalPosts": []
     }
   },
   "sections": [
@@ -205,14 +206,49 @@
       ]
     },
     {
+      "type": "blog-roll",
+      "label": "Journal entries",
+      "description": "Curated list of editorial posts managed via the Edit post tab.",
+      "mode": "blog-roll",
+      "defaults": {
+        "type": "blog-roll",
+        "title": "Entries",
+        "intro": "",
+        "posts": []
+      },
+      "fields": [
+        { "key": "title", "label": "Title", "type": "text" },
+        { "key": "intro", "label": "Intro", "type": "textarea" }
+      ],
+      "lists": [
+        {
+          "key": "posts",
+          "label": "Posts",
+          "itemLabel": "Post reference",
+          "fields": [
+            { "key": "postId", "label": "Post ID", "type": "text" },
+            {
+              "key": "featured",
+              "label": "Featured",
+              "type": "checkbox",
+              "default": false
+            }
+          ]
+        }
+      ]
+    },
+    {
       "type": "single-project",
-      "label": "Single project (advanced)",
-      "mode": "json",
+      "label": "Single project",
+      "description": "Editorial case study with structured hero data and stacked blocks.",
+      "mode": "project-builder",
       "defaults": {
         "type": "single-project",
         "title": "Project headline",
         "role": "Role",
         "year": "2025",
+        "tags": [],
+        "credits": [],
         "blocks": []
       }
     }

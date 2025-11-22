@@ -32,11 +32,21 @@ export type SectionDefinition = {
   readonly type: string;
   readonly label?: string;
   readonly description?: string;
-  readonly mode?: 'json' | 'form';
+  readonly mode?: 'json' | 'form' | 'project-builder' | 'blog-roll';
   readonly defaults?: Record<string, unknown>;
   readonly fields?: ReadonlyArray<FieldDefinition>;
   readonly lists?: ReadonlyArray<ListDefinition>;
   readonly groups?: ReadonlyArray<GroupDefinition>;
+};
+
+export type BlockDefinition = {
+  readonly type: string;
+  readonly label: string;
+  readonly description?: string;
+  readonly template: Record<string, unknown>;
+  readonly fields?: ReadonlyArray<FieldDefinition>;
+  readonly groups?: ReadonlyArray<GroupDefinition>;
+  readonly lists?: ReadonlyArray<ListDefinition>;
 };
 
 export type SchemaDefinition = {

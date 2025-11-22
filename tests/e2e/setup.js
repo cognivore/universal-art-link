@@ -34,6 +34,62 @@ export async function cleanupTestSite(testDir) {
 }
 
 /**
+ * Captures browser console logs and errors
+ * Returns an object with helper methods for error analysis
+ */
+export async function captureBrowserErrors(driver) {
+  try {
+    const logs = await driver.manage().logs().get('browser');
+    const errors = logs.filter(log => log.level.value >= 900); // SEVERE level
+    const warnings = logs.filter(log => log.level.value >= 800 && log.level.value < 900); // WARNING level
+    
+    return {
+      all: logs,
+      errors,
+      warnings,
+      hasErrors: errors.length > 0,
+      logSummary: () => {
+        if (errors.length > 0) {
+          console.log('\n=== BROWSER ERRORS ===');
+          errors.forEach(err => {
+            console.log(`[${err.level.name}] ${err.message}`);
+          });
+        }
+        if (warnings.length > 0) {
+          console.log('\n=== BROWSER WARNINGS ===');
+          warnings.forEach(warn => {
+            console.log(`[${warn.level.name}] ${warn.message}`);
+          });
+        }
+        if (errors.length === 0 && warnings.length === 0) {
+          console.log('✓ No browser errors or warnings');
+        }
+      },
+      formatForReport: () => {
+        const sections = [];
+        if (errors.length > 0) {
+          sections.push('## Errors\n\n' + errors.map(e => `- **${e.level.name}**: ${e.message}`).join('\n'));
+        }
+        if (warnings.length > 0) {
+          sections.push('## Warnings\n\n' + warnings.map(w => `- **${w.level.name}**: ${w.message}`).join('\n'));
+        }
+        return sections.join('\n\n');
+      }
+    };
+  } catch (err) {
+    console.warn('Could not capture browser logs:', err.message);
+    return {
+      all: [],
+      errors: [],
+      warnings: [],
+      hasErrors: false,
+      logSummary: () => console.log('Browser logging not available'),
+      formatForReport: () => 'Browser logging not available'
+    };
+  }
+}
+
+/**
  * Starts the dev server for a test site
  * Returns server instance and port
  */
