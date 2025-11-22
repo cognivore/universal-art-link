@@ -307,7 +307,19 @@ a {
 .image-grid {
   display: grid;
   gap: var(--space-sm);
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 600px) {
+  .image-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: var(--bp-lg)) {
+  .image-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 .image-grid__item {
@@ -315,17 +327,26 @@ a {
   border-radius: 1.75rem;
   overflow: hidden;
   background: color-mix(in srgb, var(--muted) 12%, transparent);
-  min-height: 220px;
   isolation: isolate;
 }
 
 .image-grid__item img {
   width: 100%;
-  height: 100%;
+  height: auto;
   object-fit: cover;
-  aspect-ratio: 4 / 3;
   display: block;
   transition: transform 320ms ease;
+}
+
+@media (min-width: var(--bp-md)) {
+  .image-grid__item {
+    min-height: 280px;
+  }
+  
+  .image-grid__item img {
+    height: 100%;
+    aspect-ratio: 4 / 3;
+  }
 }
 
 .image-grid__item:hover img {
@@ -436,46 +457,29 @@ a {
   gap: var(--space-sm);
 }
 
-/* Mobile full-bleed images for editorial impact */
-.blog-post__cover,
-.project-block > figure,
-.project-block > .ual-media,
-.blog-post__body > .project-block {
+/* Mobile full-bleed cover image for editorial impact */
+.blog-post__cover {
   margin-left: calc(var(--space-sm) * -1);
   margin-right: calc(var(--space-sm) * -1);
 }
 
-.blog-post__cover img,
-.project-block > figure img {
+.blog-post__cover img {
   width: 100%;
   display: block;
 }
 
-/* Image grids get full-bleed but manage their own internal spacing */
-.image-grid {
-  margin-left: calc(var(--space-sm) * -1);
-  margin-right: calc(var(--space-sm) * -1);
-  padding-left: var(--space-sm);
-  padding-right: var(--space-sm);
-  overflow: hidden;
+/* Body content images stay contained on mobile */
+.blog-post__body .project-block {
+  margin-left: 0;
+  margin-right: 0;
 }
 
 @media (min-width: var(--bp-md)) {
-  .blog-post__cover,
-  .project-block > figure,
-  .project-block > .ual-media,
-  .blog-post__body > .project-block {
+  .blog-post__cover {
     margin-left: 0;
     margin-right: 0;
   }
-  
-  .image-grid {
-    margin-left: 0;
-    margin-right: 0;
-    padding-left: 0;
-    padding-right: 0;
-  }
-  
+
   .blog-post__cover img {
     border-radius: 1.5rem;
   }
