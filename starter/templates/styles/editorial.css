@@ -433,33 +433,45 @@ a {
 
 /* Mobile full-bleed images for editorial impact */
 .blog-post__cover,
-.project-block figure,
-.project-block .ual-media,
-.blog-post__body figure,
-.blog-post__body .ual-media {
+.project-block > figure,
+.project-block > .ual-media,
+.blog-post__body > .project-block {
   margin-left: calc(var(--space-sm) * -1);
   margin-right: calc(var(--space-sm) * -1);
 }
 
 .blog-post__cover img,
-.project-block figure img,
-.blog-post__body figure img {
+.project-block > figure img {
   width: 100%;
   display: block;
 }
 
+/* Image grids get full-bleed but manage their own internal spacing */
+.image-grid {
+  margin-left: calc(var(--space-sm) * -1);
+  margin-right: calc(var(--space-sm) * -1);
+  padding-left: var(--space-sm);
+  padding-right: var(--space-sm);
+  overflow: hidden;
+}
+
 @media (min-width: var(--bp-md)) {
   .blog-post__cover,
-  .project-block figure,
-  .project-block .ual-media,
-  .blog-post__body figure,
-  .blog-post__body .ual-media {
+  .project-block > figure,
+  .project-block > .ual-media,
+  .blog-post__body > .project-block {
     margin-left: 0;
     margin-right: 0;
   }
   
-  .blog-post__cover img,
-  .blog-post__body figure img {
+  .image-grid {
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  
+  .blog-post__cover img {
     border-radius: 1.5rem;
   }
 }
