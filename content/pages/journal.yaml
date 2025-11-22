@@ -34,6 +34,7 @@ journalPosts:
           - media:
               src: https://cards.scryfall.io/normal/front/e/0/e0ef33dd-5f6d-48fa-8ef6-a8092868d50f.jpg?1759144844
               alt: ""
+              focalPoint: center
             caption: Figure of vanilla
           - media:
               src: https://cards.scryfall.io/normal/front/b/2/b2d9d5ca-7e15-437a-bdfc-5972b42148fe.jpg?1759144812

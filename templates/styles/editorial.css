@@ -342,7 +342,7 @@ a {
   .image-grid__item {
     min-height: 280px;
   }
-  
+
   .image-grid__item img {
     height: 100%;
     aspect-ratio: 4 / 3;
@@ -457,10 +457,10 @@ a {
   gap: var(--space-sm);
 }
 
-/* Mobile full-bleed cover image for editorial impact */
+/* Mobile full-bleed cover image - edge-to-edge screen impact */
 .blog-post__cover {
-  margin-left: calc(var(--space-sm) * -1);
-  margin-right: calc(var(--space-sm) * -1);
+  margin-left: calc(var(--space-lg) * -1);
+  margin-right: calc(var(--space-lg) * -1);
 }
 
 .blog-post__cover img {
@@ -479,7 +479,7 @@ a {
     margin-left: 0;
     margin-right: 0;
   }
-
+  
   .blog-post__cover img {
     border-radius: 1.5rem;
   }
