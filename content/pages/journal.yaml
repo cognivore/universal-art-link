@@ -28,6 +28,7 @@ journalPosts:
     coverImage:
       src: /assets/project-orbit-3.svg
       alt: Diffraction patterns on silk
+      focalPoint: right
     blocks:
       - type: image-grid
         items:
@@ -44,7 +45,7 @@ journalPosts:
           - media:
               src: https://cards.scryfall.io/normal/front/f/e/fe3a421d-07b6-4b94-b177-aec44c7fe689.jpg?1759144840
               alt: ""
-              focalPoint: center
+              focalPoint: right
             caption: Will we have a textless version of this?
       - type: text
         title: Project brief
