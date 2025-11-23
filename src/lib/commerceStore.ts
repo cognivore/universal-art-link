@@ -21,6 +21,7 @@ export type MerchantWithItems = Merchant & { items: MerchantItem[] };
 
 const merchantsFile = (paths: PathConfig): string => path.join(paths.commerceDir, 'merchants.yaml');
 const catalogFile = (paths: PathConfig): string => path.join(paths.commerceDir, 'catalog.yaml');
+const shopFile = (paths: PathConfig): string => path.join(paths.commerceDir, 'shop.yaml');
 
 const ensureDir = async (paths: PathConfig): Promise<void> => {
   await fs.ensureDir(paths.commerceDir);
@@ -115,14 +116,17 @@ const validateSnapshot = (snapshot: CommerceSnapshot): CommerceSnapshot => {
 
 export const readCommerceData = async (paths: PathConfig): Promise<CommerceSnapshot> => {
   await ensureDir(paths);
-  const [merchantsPayload, catalog] = await Promise.all([
+  const [merchantsPayload, catalog, shopConfig] = await Promise.all([
     readYamlIfExists<{ merchants?: Merchant[]; items?: MerchantItem[] }>(merchantsFile(paths), { merchants: [], items: [] }),
     readYamlIfExists<CatalogConfig | undefined>(catalogFile(paths), undefined),
+    readYamlIfExists<{ shop?: Record<string, unknown>; enableMultiMerchant?: boolean }>(shopFile(paths), {}),
   ]);
   const snapshot: CommerceSnapshot = {
     merchants: merchantsPayload.merchants ?? [],
     items: merchantsPayload.items ?? [],
     catalog: catalog,
+    shop: shopConfig.shop,
+    enableMultiMerchant: shopConfig.enableMultiMerchant ?? false,
   };
   return validateSnapshot(snapshot);
 };

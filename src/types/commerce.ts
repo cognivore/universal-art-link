@@ -65,10 +65,22 @@ export const CatalogConfigSchema = z.object({
   emptyState: CatalogEmptyStateSchema.optional(),
 });
 
+export const SingleShopConfigSchema = z.object({
+  domain: z.string().min(1, 'Shop domain required'),
+  name: z.string().min(1, 'Shop name required'),
+  description: z.string().default(''),
+  logoUrl: optionalUrl,
+  storefrontAccessToken: z.string().default(''),
+  featuredCollection: z.string().default(''),
+  cartNote: z.string().default(''),
+});
+
 export const CommerceDataSchema = z.object({
   merchants: z.array(MerchantSchema).default([]),
   items: z.array(MerchantItemSchema).default([]),
   catalog: CatalogConfigSchema.optional(),
+  shop: SingleShopConfigSchema.optional(),
+  enableMultiMerchant: z.boolean().default(false),
 });
 
 export const CartLineItemSchema = z.object({
@@ -92,6 +104,7 @@ export type MerchantItem = z.infer<typeof MerchantItemSchema>;
 export type CatalogHero = z.infer<typeof CatalogHeroSchema>;
 export type CatalogEmptyState = z.infer<typeof CatalogEmptyStateSchema>;
 export type CatalogConfig = z.infer<typeof CatalogConfigSchema>;
+export type SingleShopConfig = z.infer<typeof SingleShopConfigSchema>;
 export type CommerceData = z.infer<typeof CommerceDataSchema>;
 export type CartLineItem = z.infer<typeof CartLineItemSchema>;
 export type Cart = z.infer<typeof CartSchema>;
