@@ -42,7 +42,7 @@ export async function captureBrowserErrors(driver) {
     const logs = await driver.manage().logs().get('browser');
     const errors = logs.filter(log => log.level.value >= 900); // SEVERE level
     const warnings = logs.filter(log => log.level.value >= 800 && log.level.value < 900); // WARNING level
-    
+
     return {
       all: logs,
       errors,

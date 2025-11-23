@@ -23,7 +23,6 @@ const coverGroup: GroupDefinition = {
   fields: [
     { key: 'src', label: 'Image URL', type: 'text' },
     { key: 'alt', label: 'Alt text', type: 'text' },
-    { key: 'focalPoint', label: 'Focal point', type: 'select', options: ['left', 'center', 'right'], default: 'center' },
   ],
 };
 

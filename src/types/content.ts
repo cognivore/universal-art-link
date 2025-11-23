@@ -10,7 +10,6 @@ const slugTransform = z
 const MediaSchema = z.object({
   src: z.string().min(1, 'Media src is required'),
   alt: z.string().default(''),
-  focalPoint: z.enum(['left', 'center', 'right']).default('center'),
 });
 
 const CtaSchema = z.object({

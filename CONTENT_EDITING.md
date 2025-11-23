@@ -77,4 +77,26 @@ universal-art-link deploy    # POST bundle to configured endpoint
 - Use the dropdown inside the editor to insert any section defined in the schema; unsupported/custom sections fall back to JSON editors.
 - Customize `content/schema.json` to expose new fields—no TypeScript changes required.
 
+## 5. Shopify commerce catalog
+
+**Files**
+
+- `content/commerce/merchants.yaml` — master list of merchants + items.
+  - `merchants`: array of records with `name`, `slug`, `shopDomain`, optional `logoUrl`, `description`, `isActive`.
+  - `items`: array pointing at each merchant via `merchantId`. Every item needs a `shopifyVariantId` (numeric string). `displayPrice` is purely for UI; Shopify owns the real price at checkout.
+- `content/commerce/catalog.yaml` — hero + empty-state copy for the public `/merchants` page.
+
+**Editing flows**
+
+- Open the admin panel (`pnpm admin` or `/admin/` while the dev server runs) and switch to the **Commerce Suite** tab. The wizard walks artists through Shopify prep → merchant profile → item mapping → launch checklist.
+- Every merchant is scoped to the Shopify domain you paste. We never store Shopify secrets—just the public shop domain + variant IDs so we can form cart permalinks such as `https://mystore.myshopify.com/cart/123:2,456:1`.
+- Each merchant can toggle `isActive`. Inactive merchants/items stay in the YAML/admin UI but disappear from the public `/merchants` catalog and checkout.
+
+**Public experience**
+
+- `/merchants` — hero copy + grid of active merchants.
+- `/merchants/{slug}` — merchant detail with item cards, quantity selectors, and “Add to cart” buttons.
+- `/cart` — grouped cart that stores selections in `localStorage`, shows one section per merchant, and redirects shoppers to Shopify when they click “Checkout on Shopify”. Multi-merchant carts display a note reminding visitors they’ll complete one Shopify checkout per merchant.
+- Cart data works without accounts. Clearing cookies/localStorage resets the cart.
+
 If CLI commands fail, read the error message—it points to the file/field that needs attention.

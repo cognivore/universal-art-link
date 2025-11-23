@@ -90,8 +90,7 @@ const renderProjectsGrid = (section: Section & { type: 'projects-grid' }, option
 const renderImageGridBlock = (block: Extract<ProjectBlock, { type: 'image-grid' }>): string => {
   const items = block.items
     .map((item) => {
-      const focal = item.media.focalPoint ?? 'center';
-      return `<figure class="image-grid__item image-grid__item--${focal}">
+      return `<figure class="image-grid__item">
         <img src="${escapeHtml(item.media.src)}" alt="${escapeHtml(item.media.alt ?? '')}" loading="lazy" />
         ${optional(Boolean(item.caption), () => `<figcaption class="image-grid__caption">${escapeHtml(item.caption ?? '')}</figcaption>`)}
       </figure>`;

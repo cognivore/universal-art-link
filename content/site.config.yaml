@@ -21,6 +21,8 @@ navigation:
     href: /project-orbit
   - label: Journal
     href: /journal
+  - label: Shop
+    href: /merchants
   - label: Contact
     href: /contact
 socialLinks:

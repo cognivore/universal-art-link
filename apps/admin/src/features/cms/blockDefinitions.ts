@@ -21,7 +21,7 @@ const imageBlock: BlockDefinition = {
   description: 'Single media with optional caption and bleed toggle.',
   template: {
     type: 'image',
-    media: { src: '', alt: '', focalPoint: 'center' },
+    media: { src: '', alt: '' },
     caption: '',
     bleed: false,
   },
@@ -36,7 +36,6 @@ const imageBlock: BlockDefinition = {
       fields: [
         { key: 'src', label: 'Image URL', type: 'text' },
         { key: 'alt', label: 'Alt text', type: 'text' },
-        { key: 'focalPoint', label: 'Focal point', type: 'select', options: ['left', 'center', 'right'], default: 'center' },
       ],
     },
   ],
@@ -49,8 +48,8 @@ const imageGridBlock: BlockDefinition = {
   template: {
     type: 'image-grid',
     items: [
-      { media: { src: '', alt: '', focalPoint: 'center' }, caption: '' },
-      { media: { src: '', alt: '', focalPoint: 'center' }, caption: '' },
+      { media: { src: '', alt: '' }, caption: '' },
+      { media: { src: '', alt: '' }, caption: '' },
     ],
   },
   lists: [

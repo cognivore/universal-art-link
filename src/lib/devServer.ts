@@ -5,7 +5,18 @@ import { Logger } from './logger.js';
 import { AdminService } from './adminService.js';
 import { readContentSnapshot, readSchemaDefinition, writeContentSnapshot } from './contentStore.js';
 import type { ContentSnapshot } from './contentStore.js';
+import type { CatalogInput } from '../types/commerce.js';
 import { PathConfig } from './paths.js';
+import {
+  createMerchant,
+  createMerchantItem,
+  deleteMerchant,
+  deleteMerchantItem,
+  readCommerceData,
+  saveCatalogConfig,
+  updateMerchant,
+  updateMerchantItem,
+} from './commerceStore.js';
 
 const mimeMap: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -165,6 +176,125 @@ const readJsonBody = async (req: http.IncomingMessage): Promise<Record<string, u
     req.on('error', reject);
   });
 
+const DEFAULT_OWNER_ID = 'local-admin';
+
+const handleCommerceApi = async (
+  req: http.IncomingMessage,
+  res: http.ServerResponse<http.IncomingMessage>,
+  paths: PathConfig,
+  requestUrl: URL,
+): Promise<boolean> => {
+  if (!requestUrl.pathname.startsWith('/__ual/api/commerce')) {
+    return false;
+  }
+
+  const subPath = requestUrl.pathname.replace('/__ual/api/commerce', '').replace(/^\/+/, '');
+  const segments = subPath ? subPath.split('/').filter(Boolean) : [];
+  const method = req.method ?? 'GET';
+
+  try {
+    if (segments.length === 0 && method === 'GET') {
+      const snapshot = await readCommerceData(paths);
+      respondJson(res, 200, { ok: true, ...snapshot });
+      return true;
+    }
+
+    if (segments[0] === 'merchants') {
+      if (segments.length === 1 && method === 'POST') {
+        const body = await readJsonBody(req);
+        const merchant = await createMerchant(paths, {
+          name: String(body.name ?? ''),
+          slug: body.slug ? String(body.slug) : undefined,
+          shopDomain: String(body.shopDomain ?? ''),
+          logoUrl: body.logoUrl ? String(body.logoUrl) : undefined,
+          description: body.description ? String(body.description) : undefined,
+          isActive: body.isActive === undefined ? true : Boolean(body.isActive),
+          ownerUserId: body.ownerUserId ? String(body.ownerUserId) : DEFAULT_OWNER_ID,
+        });
+        respondJson(res, 201, merchant);
+        return true;
+      }
+
+      if (segments.length === 2) {
+        const merchantId = segments[1]!;
+        if (method === 'PATCH') {
+          const body = await readJsonBody(req);
+          const merchant = await updateMerchant(paths, merchantId, {
+            name: body.name ? String(body.name) : undefined,
+            slug: body.slug ? String(body.slug) : undefined,
+            shopDomain: body.shopDomain ? String(body.shopDomain) : undefined,
+            description: body.description ? String(body.description) : undefined,
+            logoUrl: body.logoUrl ? String(body.logoUrl) : undefined,
+            isActive: body.isActive === undefined ? undefined : Boolean(body.isActive),
+          });
+          respondJson(res, 200, merchant);
+          return true;
+        }
+        if (method === 'DELETE') {
+          await deleteMerchant(paths, merchantId);
+          res.statusCode = 204;
+          res.end();
+          return true;
+        }
+      }
+
+      if (segments.length === 3 && segments[2] === 'items' && method === 'POST') {
+        const merchantId = segments[1]!;
+        const body = await readJsonBody(req);
+        const item = await createMerchantItem(paths, merchantId, {
+          merchantId,
+          title: String(body.title ?? ''),
+          description: body.description ? String(body.description) : undefined,
+          imageUrl: body.imageUrl ? String(body.imageUrl) : undefined,
+          shopifyVariantId: String(body.shopifyVariantId ?? ''),
+          displayPrice: body.displayPrice ? String(body.displayPrice) : undefined,
+          isActive: body.isActive === undefined ? true : Boolean(body.isActive),
+          sortOrder: typeof body.sortOrder === 'number' ? body.sortOrder : undefined,
+        });
+        respondJson(res, 201, item);
+        return true;
+      }
+    }
+
+    if (segments[0] === 'items' && segments.length === 2) {
+      const itemId = segments[1]!;
+      if (method === 'PATCH') {
+        const body = await readJsonBody(req);
+        const item = await updateMerchantItem(paths, itemId, {
+          title: body.title ? String(body.title) : undefined,
+          description: body.description ? String(body.description) : undefined,
+          imageUrl: body.imageUrl ? String(body.imageUrl) : undefined,
+          shopifyVariantId: body.shopifyVariantId ? String(body.shopifyVariantId) : undefined,
+          displayPrice: body.displayPrice ? String(body.displayPrice) : undefined,
+          isActive: body.isActive === undefined ? undefined : Boolean(body.isActive),
+          sortOrder: typeof body.sortOrder === 'number' ? body.sortOrder : undefined,
+        });
+        respondJson(res, 200, item);
+        return true;
+      }
+      if (method === 'DELETE') {
+        await deleteMerchantItem(paths, itemId);
+        res.statusCode = 204;
+        res.end();
+        return true;
+      }
+    }
+
+    if (segments[0] === 'catalog' && method === 'POST') {
+      const body = await readJsonBody(req);
+      const catalog = await saveCatalogConfig(paths, body as CatalogInput);
+      respondJson(res, 200, catalog);
+      return true;
+    }
+
+    respondJson(res, 404, { message: 'Unknown commerce endpoint' });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Commerce request failed';
+    respondJson(res, 400, { message });
+    return true;
+  }
+};
 const handleAdminApi = async (
   req: http.IncomingMessage,
   res: http.ServerResponse<http.IncomingMessage>,
@@ -177,6 +307,13 @@ const handleAdminApi = async (
   }
 
   try {
+    if (requestUrl.pathname.startsWith('/__ual/api/commerce')) {
+      const handled = await handleCommerceApi(req, res, paths, requestUrl);
+      if (handled) {
+        return true;
+      }
+    }
+
     if (requestUrl.pathname === '/__ual/api/state' && req.method === 'GET') {
       const state = await adminService.getState();
       respondJson(res, 200, { apiAvailable: true, ...state });

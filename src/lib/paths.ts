@@ -4,6 +4,7 @@ export type PathConfig = {
   readonly rootDir: string;
   readonly contentDir: string;
   readonly pagesDir: string;
+  readonly commerceDir: string;
   readonly templatesDir: string;
   readonly layoutsDir: string;
   readonly partialsDir: string;
@@ -25,6 +26,7 @@ export const createPathConfig = (rootDir: string, outputDir = 'dist'): PathConfi
     rootDir,
     contentDir: resolve('content'),
     pagesDir: resolve('content/pages'),
+    commerceDir: resolve('content/commerce'),
     templatesDir: resolve('templates'),
     layoutsDir: resolve('templates/layouts'),
     partialsDir: resolve('templates/partials'),

@@ -1,0 +1,53 @@
+merchants:
+  - id: mrt_demo
+    name: Studio Loom
+    slug: studio-loom
+    shopDomain: studio-loom.myshopify.com
+    logoUrl: /assets/project-elan.svg
+    description: Letterpress artist collective offering limited-edition prints, risograph workshops, and tactile merch.
+    isActive: true
+    createdAt: 2024-11-01T12:00:00.000Z
+    updatedAt: 2024-11-01T12:00:00.000Z
+  - id: mrt_tutor
+    name: Orbit Theory Tutoring
+    slug: orbit-theory
+    shopDomain: orbit-theory.myshopify.com
+    logoUrl: /assets/project-orbit.svg
+    description: Independent math + art tutors specializing in portfolio prep and applied geometry workshops.
+    isActive: true
+    createdAt: 2024-11-05T10:30:00.000Z
+    updatedAt: 2024-11-05T10:30:00.000Z
+items:
+  - id: itm_print_pack
+    merchantId: mrt_demo
+    title: Chromatic Print Pack
+    description: Set of three A3 giclée prints pulled from the Meridian archive.
+    imageUrl: /assets/project-signal.svg
+    shopifyVariantId: "48712093813533"
+    displayPrice: $120
+    isActive: true
+    sortOrder: 0
+    createdAt: 2024-11-05T12:00:00.000Z
+    updatedAt: 2024-11-05T12:00:00.000Z
+  - id: itm_geometry_lab
+    merchantId: mrt_tutor
+    title: Geometry Lab (1:1, 60 min)
+    description: Hybrid tutoring session blending Euclidean construction with spatial sketching drills.
+    imageUrl: /assets/project-orbit-2.svg
+    shopifyVariantId: "48712093879069"
+    displayPrice: $95
+    isActive: true
+    sortOrder: 0
+    createdAt: 2024-11-06T09:00:00.000Z
+    updatedAt: 2024-11-06T09:00:00.000Z
+  - id: itm_portfolio_day
+    merchantId: mrt_tutor
+    title: Portfolio Day Intensive
+    description: Four-hour sprint reviewing submissions, story beats, and presentation layouts.
+    imageUrl: /assets/project-orbit-3.svg
+    shopifyVariantId: "48712093911837"
+    displayPrice: $260
+    isActive: true
+    sortOrder: 1
+    createdAt: 2024-11-06T09:10:00.000Z
+    updatedAt: 2024-11-06T09:10:00.000Z

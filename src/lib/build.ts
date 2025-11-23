@@ -5,6 +5,8 @@ import { loadPages, loadSiteConfig } from './contentLoader.js';
 import { renderBlogPost, renderSections } from './sections.js';
 import { clearTemplateCache, renderWithLayout } from './template.js';
 import { BlogPost, Page, SiteConfig } from '../types/content.js';
+import { readCommerceData, type CommerceSnapshot } from './commerceStore.js';
+import type { CatalogConfig, Merchant, MerchantItem } from '../types/commerce.js';
 
 export type BuildOptions = {
   readonly rootDir: string;
@@ -239,13 +241,303 @@ const renderBlogPostPage = async (
   return { html, outputPath };
 };
 
+type CommercePageDefinition = {
+  readonly slug: string;
+  readonly title: string;
+  readonly description: string;
+  readonly sections: string[];
+};
+
+const escapeHtmlLite = (value: string): string =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const serializeCommercePayload = (payload: unknown): string => JSON.stringify(payload).replace(/</g, '\\u003c');
+
+const createCommerceDataScript = (payload: unknown): string =>
+  `<script type="application/json" id="ual-commerce-data">${serializeCommercePayload(payload)}</script>`;
+
+const renderCatalogHeroSection = (
+  site: SiteConfig,
+  catalog: CatalogConfig | undefined,
+): string => {
+  const title = catalog?.hero?.title?.trim() || 'Neighborhood commerce, powered by Shopify';
+  const body =
+    catalog?.hero?.body?.trim() ||
+    `Browse studio prints, tutoring sessions, and services published through ${site.siteTitle}.`;
+  const ctaLabel = catalog?.hero?.ctaLabel?.trim() || 'Browse merchants';
+  const ctaHref = catalog?.hero?.ctaHref?.trim() || '#merchant-list';
+  return `<section class="section commerce-hero stack">
+    <p class="kicker">Local commerce</p>
+    <h1 class="display">${escapeHtmlLite(title)}</h1>
+    <p class="measure">${escapeHtmlLite(body)}</p>
+    <div class="commerce-hero__actions">
+      <a class="btn btn--solid" href="${escapeHtmlLite(ctaHref)}">${escapeHtmlLite(ctaLabel)}</a>
+      <a class="btn btn--ghost" href="/cart">View cart</a>
+    </div>
+  </section>`;
+};
+
+const renderMerchantGridSection = (
+  merchants: ReadonlyArray<{ merchant: Merchant; items: MerchantItem[] }>,
+  emptyState: CatalogConfig['emptyState'] | undefined,
+): string => {
+  if (merchants.length === 0) {
+    const title = emptyState?.title?.trim() || 'No merchants are live yet';
+    const body =
+      emptyState?.body?.trim() ||
+      'Use the Commerce Suite wizard in your admin panel to activate the first merchant.';
+    return `<section class="section commerce-merchant-grid stack" id="merchant-list">
+      <div class="commerce-empty">
+        <h3>${escapeHtmlLite(title)}</h3>
+        <p class="measure">${escapeHtmlLite(body)}</p>
+        <a class="btn btn--solid" href="/cart">Visit cart</a>
+      </div>
+    </section>`;
+  }
+  const cards = merchants
+    .map(({ merchant, items }) => {
+      const count = items.length;
+      const offeringsLabel = `${count} offering${count === 1 ? '' : 's'}`;
+      const logo = merchant.logoUrl
+        ? `<img src="${escapeHtmlLite(merchant.logoUrl)}" alt="${escapeHtmlLite(merchant.name)} logo" loading="lazy" />`
+        : `<div class="commerce-merchant-card__placeholder">${escapeHtmlLite(merchant.name.charAt(0).toUpperCase())}</div>`;
+      const description = merchant.description
+        ? `<p class="commerce-merchant-card__description">${escapeHtmlLite(merchant.description)}</p>`
+        : '';
+      return `<article class="commerce-merchant-card">
+        <div class="commerce-merchant-card__logo">${logo}</div>
+        <div class="commerce-merchant-card__body">
+          <h3>${escapeHtmlLite(merchant.name)}</h3>
+          ${description}
+          <div class="commerce-merchant-card__meta">
+            <span>${offeringsLabel}</span>
+            <a class="btn btn--ghost" href="/merchants/${escapeHtmlLite(merchant.slug)}">View offerings</a>
+          </div>
+        </div>
+      </article>`;
+    })
+    .join('\n');
+  return `<section class="section commerce-merchant-grid stack" id="merchant-list">
+    <div class="commerce-merchant-grid__items">
+      ${cards}
+    </div>
+  </section>`;
+};
+
+const renderMerchantHeroSection = (merchant: Merchant): string => {
+  const description = merchant.description
+    ? `<p class="measure">${escapeHtmlLite(merchant.description)}</p>`
+    : '';
+  const logo = merchant.logoUrl
+    ? `<figure class="commerce-merchant-hero__logo">
+        <img src="${escapeHtmlLite(merchant.logoUrl)}" alt="${escapeHtmlLite(merchant.name)} logo" loading="lazy" />
+      </figure>`
+    : '';
+  return `<section class="section commerce-merchant-hero grid-2">
+    ${logo}
+    <div class="commerce-merchant-hero__copy stack">
+      <p class="kicker">Merchant</p>
+      <h1 class="display">${escapeHtmlLite(merchant.name)}</h1>
+      ${description}
+      <div class="commerce-merchant-hero__links">
+        <a class="btn btn--solid" href="/cart">Go to cart</a>
+        <a class="btn btn--ghost" href="/merchants">Back to merchants</a>
+      </div>
+    </div>
+  </section>`;
+};
+
+const renderMerchantItemsSection = (merchant: Merchant, items: MerchantItem[]): string => {
+  if (items.length === 0) {
+    return `<section class="section commerce-item-grid stack" data-merchant-id="${escapeHtmlLite(merchant.id)}">
+      <p class="measure">No offerings are available yet. Check back soon.</p>
+    </section>`;
+  }
+  const cards = items
+    .map((item) => {
+      const description = item.description ? `<p class="measure">${escapeHtmlLite(item.description)}</p>` : '';
+      const image = item.imageUrl
+        ? `<div class="commerce-item-card__media">
+            <img src="${escapeHtmlLite(item.imageUrl)}" alt="${escapeHtmlLite(item.title)}" loading="lazy" />
+          </div>`
+        : '';
+      const price = item.displayPrice
+        ? `<span class="commerce-item-card__price">${escapeHtmlLite(item.displayPrice)}</span>`
+        : '<span class="commerce-item-card__price commerce-item-card__price--muted">Price shown at checkout</span>';
+      return `<article class="commerce-item-card" data-item-id="${escapeHtmlLite(item.id)}" data-merchant-id="${escapeHtmlLite(item.merchantId)}" data-variant-id="${escapeHtmlLite(item.shopifyVariantId)}">
+        ${image}
+        <div class="commerce-item-card__body">
+          <div class="commerce-item-card__intro">
+            <h3>${escapeHtmlLite(item.title)}</h3>
+            ${price}
+          </div>
+          ${description}
+          <div class="commerce-item-card__actions">
+            <label class="commerce-item-card__quantity">
+              <span class="micro-label">Quantity</span>
+              <input type="number" min="1" value="1" data-quantity-input />
+            </label>
+            <button class="btn btn--solid" type="button" data-add-to-cart>Add to cart</button>
+          </div>
+        </div>
+      </article>`;
+    })
+    .join('\n');
+  return `<section class="section commerce-item-grid stack" data-merchant-id="${escapeHtmlLite(merchant.id)}">
+    <div class="commerce-item-grid__items">
+      ${cards}
+    </div>
+  </section>`;
+};
+
+const renderCartSection = (): string => {
+  return `<section class="section commerce-cart stack" data-cart-root>
+    <div class="stack">
+      <p class="kicker">Shopify checkout</p>
+      <h1 class="display">Your cart</h1>
+      <p class="measure" data-cart-note>
+        Your cart may include items from multiple businesses. You will complete a separate Shopify checkout for each merchant.
+      </p>
+    </div>
+    <div class="commerce-cart__groups" data-cart-groups></div>
+    <div class="commerce-cart__empty" data-cart-empty>
+      <p class="measure">No items yet. Visit the merchants catalog to add prints, services, or tutoring sessions.</p>
+      <a class="btn btn--solid" href="/merchants">Browse merchants</a>
+    </div>
+  </section>`;
+};
+
+const buildCommercePageDefinitions = (site: SiteConfig, commerce: CommerceSnapshot): CommercePageDefinition[] => {
+  const activeMerchants = commerce.merchants.filter((merchant) => merchant.isActive);
+  const merchantEntries = activeMerchants
+    .map((merchant) => {
+      const items = commerce.items
+        .filter((item) => item.merchantId === merchant.id && item.isActive)
+        .sort((a, b) => {
+          if (a.sortOrder !== b.sortOrder) {
+            return a.sortOrder - b.sortOrder;
+          }
+          return a.title.localeCompare(b.title);
+        });
+      return { merchant, items };
+    })
+    .sort((a, b) => a.merchant.name.localeCompare(b.merchant.name));
+
+  const dataset = {
+    siteTitle: site.siteTitle,
+    merchants: activeMerchants.map((merchant) => ({
+      id: merchant.id,
+      name: merchant.name,
+      slug: merchant.slug,
+      shopDomain: merchant.shopDomain,
+      logoUrl: merchant.logoUrl,
+      description: merchant.description,
+    })),
+    items: merchantEntries
+      .flatMap((entry) => entry.items)
+      .map((item) => ({
+        id: item.id,
+        merchantId: item.merchantId,
+        title: item.title,
+        description: item.description,
+        imageUrl: item.imageUrl,
+        shopifyVariantId: item.shopifyVariantId,
+        displayPrice: item.displayPrice,
+        sortOrder: item.sortOrder,
+      })),
+  };
+  const commerceScript = createCommerceDataScript(dataset);
+
+  const pages: CommercePageDefinition[] = [];
+  pages.push({
+    slug: '/merchants',
+    title: 'Merchants',
+    description:
+      commerce.catalog?.hero?.body?.trim() ||
+      `Browse the local catalog curated by ${site.siteTitle}`,
+    sections: [renderCatalogHeroSection(site, commerce.catalog), renderMerchantGridSection(merchantEntries, commerce.catalog?.emptyState), commerceScript],
+  });
+
+  for (const { merchant, items } of merchantEntries) {
+    pages.push({
+      slug: `/merchants/${merchant.slug}`,
+      title: merchant.name,
+      description: merchant.description ?? `Offerings from ${merchant.name}`,
+      sections: [renderMerchantHeroSection(merchant), renderMerchantItemsSection(merchant, items), commerceScript],
+    });
+  }
+
+  pages.push({
+    slug: '/cart',
+    title: 'Cart',
+    description: 'Grouped checkout links that redirect shoppers to Shopify.',
+    sections: [renderCartSection(), commerceScript],
+  });
+
+  return pages;
+};
+
+const renderCommercePage = async (
+  definition: CommercePageDefinition,
+  site: SiteConfig,
+  paths: PathConfig,
+): Promise<{ readonly html: string; readonly outputPath: string }> => {
+  const depth = slugDepth(definition.slug);
+  const themeVars = themeToCssVariables(site.theme);
+  const canonical =
+    site.baseUrl.startsWith('http://') || site.baseUrl.startsWith('https://')
+      ? new URL(definition.slug, site.baseUrl).toString()
+      : `${site.baseUrl.replace(/\/$/, '')}${definition.slug}`;
+
+  const pageStub: Page = {
+    slug: definition.slug,
+    title: definition.title,
+    description: definition.description,
+    layout: 'default',
+    sections: [],
+    journalPosts: [],
+  };
+
+  const context = {
+    site,
+    page: pageStub,
+    meta: {
+      title: `${definition.title} · ${site.siteTitle}`,
+      description: definition.description ?? site.siteDescription,
+      canonicalUrl: canonical,
+    },
+    assets: {
+      styles: assetHref(depth, 'styles/editorial.css'),
+      scripts: assetHref(depth, 'scripts/app.js'),
+      base: relativeFromDepth(depth),
+    },
+    sections: definition.sections,
+    themeVars,
+    navigation: buildNavigation(site, depth, definition.slug),
+    socialLinks: buildSocial(site),
+  };
+
+  const html = await renderWithLayout('default', context, paths);
+  const outputPath = path.join(paths.outputDir, slugToOutputPath(definition.slug));
+  return { html, outputPath };
+};
+
 export const buildSite = async ({ rootDir, outDir, invalidateTemplates }: BuildOptions): Promise<BuildResult> => {
   if (invalidateTemplates) {
     clearTemplateCache();
   }
 
   const paths = createPathConfig(rootDir, outDir);
-  const [siteConfig, pages] = await Promise.all([loadSiteConfig(paths.contentDir), loadPages(paths.pagesDir)]);
+  const [siteConfig, pages, commerce] = await Promise.all([
+    loadSiteConfig(paths.contentDir),
+    loadPages(paths.pagesDir),
+    readCommerceData(paths),
+  ]);
 
   await fs.ensureDir(paths.outputDir);
   await fs.emptyDir(paths.outputDir);
@@ -262,6 +554,13 @@ export const buildSite = async ({ rootDir, outDir, invalidateTemplates }: BuildO
     }
   }
 
+  const commercePages = buildCommercePageDefinitions(siteConfig, commerce);
+  const commercePreviewPaths: string[] = [];
+  for (const commercePage of commercePages) {
+    rendered.push(await renderCommercePage(commercePage, siteConfig, paths));
+    commercePreviewPaths.push(commercePage.slug);
+  }
+
   await Promise.all(
     rendered.map(async ({ html, outputPath }) => {
       await fs.ensureDir(path.dirname(outputPath));
@@ -274,7 +573,7 @@ export const buildSite = async ({ rootDir, outDir, invalidateTemplates }: BuildO
   await copyIfExists(paths.scriptsDir, path.join(paths.outputDir, 'scripts'));
   await copyAdminInterface(paths);
 
-  const previewPaths = [...pages.map((page) => page.slug), ...blogPreviewPaths];
+  const previewPaths = [...pages.map((page) => page.slug), ...blogPreviewPaths, ...commercePreviewPaths];
   return { pages: rendered.length, outputDir: paths.outputDir, previewPaths };
 };
 

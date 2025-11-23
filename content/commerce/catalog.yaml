@@ -1,0 +1,8 @@
+hero:
+  title: Neighborhood commerce, powered by Shopify
+  body: Help local studios and tutors sell prints, workshops, and services without touching Shopify’s admin. Build the catalog here, then send shoppers straight to Shopify checkout links.
+  ctaLabel: Browse all merchants
+  ctaHref: /merchants
+emptyState:
+  title: No merchants are active yet
+  body: Use the Commerce Suite wizard in your admin panel to create a merchant, map Shopify variant IDs, and publish your first cart-ready catalog.
