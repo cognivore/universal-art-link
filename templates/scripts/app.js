@@ -115,11 +115,20 @@ const initCommerceSuite = () => {
     console.warn('[UAL] Failed to parse commerce payload', error);
     return;
   }
-  if (!commerceData || !Array.isArray(commerceData.merchants)) {
+
+  const cart = createCartStore();
+
+  // Single-tenant mode
+  if (commerceData.mode === 'single-tenant' && commerceData.shop) {
+    initSingleTenantShop(commerceData.shop, cart);
+    initSingleTenantCart(commerceData.shop, cart);
     return;
   }
 
-  const cart = createCartStore();
+  // Multi-merchant mode
+  if (!commerceData || !Array.isArray(commerceData.merchants)) {
+    return;
+  }
   cart.prune(commerceData);
   initAddToCartButtons(commerceData, cart);
   initCartPage(commerceData, cart);
@@ -202,6 +211,13 @@ const initCartPage = (commerceData, cart) => {
   };
 
   render();
+
+  // Re-render on storage events (multi-tab sync)
+  window.addEventListener('storage', (event) => {
+    if (event.key === STORAGE_KEY) {
+      render();
+    }
+  });
 };
 
 const buildMerchantGroups = (lines, commerceData) => {
@@ -337,5 +353,197 @@ const buildShopifyCartUrl = (domain, items, options = {}) => {
   params.set('ref', 'ual');
   const query = params.toString();
   return query ? `${base}?${query}` : base;
+};
+
+// Single-tenant shop initialization
+const initSingleTenantShop = (shopConfig, cart) => {
+  const catalogRoot = document.querySelector('[data-shop-catalog]');
+  if (!catalogRoot) return;
+
+  if (!window.createShopifyStorefrontClient) {
+    catalogRoot.innerHTML = '<p class="measure">Shopify Storefront API not loaded.</p>';
+    return;
+  }
+
+  const client = window.createShopifyStorefrontClient(shopConfig.domain, shopConfig.storefrontAccessToken);
+
+  const renderProduct = (product) => {
+    if (!product || !product.variants || !product.variants.edges.length) return '';
+
+    const variant = product.variants.edges[0].node;
+    const variantId = variant.id.split('/').pop();
+    const price = `${variant.price.currencyCode} ${parseFloat(variant.price.amount).toFixed(2)}`;
+    const image = product.featuredImage
+      ? `<div class="commerce-item-card__media">
+          <img src="${escapeHtml(product.featuredImage.url)}" alt="${escapeHtml(product.featuredImage.altText || product.title)}" loading="lazy" />
+        </div>`
+      : '';
+
+    const availability = !product.availableForSale || !variant.availableForSale
+      ? '<span class="commerce-item-card__badge commerce-item-card__badge--soldout">Sold out</span>'
+      : variant.quantityAvailable !== undefined && variant.quantityAvailable < 5
+        ? `<span class="commerce-item-card__badge commerce-item-card__badge--low">Only ${variant.quantityAvailable} left</span>`
+        : '';
+
+    return `<article class="commerce-item-card" data-item-id="${variantId}" data-variant-id="${variantId}" data-shop-product>
+      ${image}
+      <div class="commerce-item-card__body">
+        <div class="commerce-item-card__intro">
+          <h3>${escapeHtml(product.title)}</h3>
+          <span class="commerce-item-card__price">${escapeHtml(price)}</span>
+        </div>
+        ${product.description ? `<p class="measure">${escapeHtml(product.description)}</p>` : ''}
+        ${availability}
+        <div class="commerce-item-card__actions">
+          <label class="commerce-item-card__quantity">
+            <span class="micro-label">Quantity</span>
+            <input type="number" min="1" value="1" data-quantity-input ${!product.availableForSale || !variant.availableForSale ? 'disabled' : ''} />
+          </label>
+          <button class="btn btn--solid" type="button" data-add-to-cart ${!product.availableForSale || !variant.availableForSale ? 'disabled' : ''}>
+            ${product.availableForSale && variant.availableForSale ? 'Add to cart' : 'Sold out'}
+          </button>
+        </div>
+      </div>
+    </article>`;
+  };
+
+  const loadProducts = async () => {
+    catalogRoot.innerHTML = '<div class="commerce-loading"><p class="measure">Loading products…</p></div>';
+
+    try {
+      let products;
+      if (shopConfig.featuredCollection) {
+        const collection = await client.getCollection(shopConfig.featuredCollection);
+        products = collection?.products?.edges?.map(edge => edge.node) || [];
+      } else {
+        products = await client.getProducts(50);
+      }
+
+      if (!products || products.length === 0) {
+        catalogRoot.innerHTML = '<p class="measure">No products available at this time.</p>';
+        return;
+      }
+
+      const html = `<div class="commerce-item-grid__items">${products.map(renderProduct).join('\n')}</div>`;
+      catalogRoot.innerHTML = html;
+
+      // Wire up add-to-cart for Shopify products
+      catalogRoot.querySelectorAll('[data-add-to-cart]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const card = button.closest('[data-shop-product]');
+          if (!card) return;
+          const variantId = card.getAttribute('data-variant-id');
+          const quantityInput = card.querySelector('[data-quantity-input]');
+          const quantity = Math.max(1, parseInt(quantityInput?.value ?? '1', 10) || 1);
+
+          cart.add(variantId, 'single-shop', variantId, quantity);
+          if (quantityInput) quantityInput.value = '1';
+
+          const title = card.querySelector('h3')?.textContent || 'Item';
+          showCartToast(`${quantity} × ${title} added to cart`);
+        });
+      });
+    } catch (error) {
+      console.error('[UAL] Failed to load Shopify products:', error);
+      catalogRoot.innerHTML = '<p class="measure">Unable to load products. Please check your Shopify Storefront API configuration.</p>';
+    }
+  };
+
+  loadProducts();
+};
+
+const initSingleTenantCart = (shopConfig, cart) => {
+  const root = document.querySelector('[data-cart-root]');
+  if (!root) return;
+  const groupsHost = root.querySelector('[data-cart-groups]');
+  const emptyState = root.querySelector('[data-cart-empty]');
+  const noteEl = root.querySelector('[data-cart-note]');
+
+  if (noteEl) {
+    noteEl.textContent = 'Review your items below and click checkout to complete your purchase on Shopify.';
+  }
+
+  const render = () => {
+    if (!groupsHost) return;
+    const lines = cart.getLines();
+
+    if (!lines.length) {
+      groupsHost.innerHTML = '';
+      if (emptyState) emptyState.hidden = false;
+      return;
+    }
+
+    if (emptyState) emptyState.hidden = true;
+
+    const itemsHtml = lines
+      .map(
+        (line) => `<div class="commerce-cart__item">
+          <div class="commerce-cart__item-details">
+            <span class="commerce-cart__item-title">Variant #${escapeHtml(line.variantId)}</span>
+          </div>
+          <div class="commerce-cart__item-controls">
+            <input
+              type="number"
+              min="1"
+              value="${line.quantity}"
+              data-cart-quantity="${escapeHtml(line.itemId)}"
+              class="commerce-cart__quantity-input"
+            />
+            <button type="button" class="btn btn--ghost btn--sm" data-cart-remove="${escapeHtml(line.itemId)}">Remove</button>
+          </div>
+        </div>`
+      )
+      .join('\n');
+
+    const checkoutUrl = buildShopifyCartUrl(
+      shopConfig.domain,
+      lines.map((line) => ({ variantId: line.variantId, quantity: line.quantity })),
+      { note: shopConfig.cartNote }
+    );
+
+    groupsHost.innerHTML = `<div class="commerce-cart__group">
+      <div class="commerce-cart__group-header">
+        <h3>${escapeHtml(shopConfig.name)}</h3>
+      </div>
+      <div class="commerce-cart__items">
+        ${itemsHtml}
+      </div>
+      <div class="commerce-cart__group-footer">
+        <a href="${escapeHtml(checkoutUrl)}" class="btn btn--solid" target="_blank" rel="noreferrer">
+          Checkout on Shopify
+        </a>
+      </div>
+    </div>`;
+
+    attachCartHandlers(cart, render);
+  };
+
+  render();
+
+  // Re-render on storage events (multi-tab sync)
+  window.addEventListener('storage', (event) => {
+    if (event.key === STORAGE_KEY) {
+      render();
+    }
+  });
+};
+
+const attachCartHandlers = (cart, renderFn) => {
+  document.querySelectorAll('[data-cart-quantity]').forEach((input) => {
+    const itemId = input.getAttribute('data-cart-quantity');
+    input.addEventListener('change', () => {
+      const qty = Math.max(1, parseInt(input.value, 10) || 1);
+      cart.update(itemId, qty);
+      renderFn();
+    });
+  });
+
+  document.querySelectorAll('[data-cart-remove]').forEach((button) => {
+    const itemId = button.getAttribute('data-cart-remove');
+    button.addEventListener('click', () => {
+      cart.remove(itemId);
+      renderFn();
+    });
+  });
 };
 

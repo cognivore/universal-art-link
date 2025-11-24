@@ -9,6 +9,8 @@ import { Textarea } from '../../components/ui/textarea';
 import { Badge } from '../../components/ui/badge';
 import { cn } from '../../lib/utils';
 import { useCommerce } from './useCommerce';
+import { SingleShopPanel } from './SingleShopPanel';
+import { ModeTogglePanel } from './ModeTogglePanel';
 import type { CommerceCatalog, ItemPatch, ItemPayload, MerchantPatch, MerchantPayload } from '../../lib/commerce-api';
 
 const slugify = (value: string): string =>
@@ -68,14 +70,19 @@ export const CommerceSuite = () => {
     );
   }
 
+  const isMultiMerchant = commerce.state.enableMultiMerchant ?? false;
+
   return (
     <div className="flex flex-col gap-6">
       <header className="space-y-2">
         <p className="uppercase tracking-[0.35em] text-xs text-muted-foreground">Commerce Suite</p>
-        <h1 className="text-3xl font-semibold">Multi-merchant Shopify onboarding</h1>
+        <h1 className="text-3xl font-semibold">
+          {isMultiMerchant ? 'Multi-merchant marketplace' : 'Shopify storefront'}
+        </h1>
         <p className="text-muted-foreground">
-          Help local studios and tutors launch storefronts powered by Shopify cart permalinks. Use the wizard
-          to go from “no Shopify account” to a live catalog that redirects shoppers to secure checkouts.
+          {isMultiMerchant
+            ? 'Manage multiple merchants and their offerings in a unified marketplace.'
+            : 'Connect your Shopify store and display products with live pricing from Shopify Storefront API.'}
         </p>
       </header>
 
@@ -106,31 +113,47 @@ export const CommerceSuite = () => {
         </Card>
       ) : null}
 
-      <CommerceWizard wizard={commerce.wizard} />
+      {isMultiMerchant ? (
+        <>
+          <CommerceWizard wizard={commerce.wizard} />
 
-      <div className="grid gap-6 xl:grid-cols-[360px,1fr]">
-        <MerchantPanel
-          state={commerce.state}
-          selectedMerchant={commerce.selectedMerchant}
-          onSelect={commerce.actions.selectMerchant}
-          onCreate={commerce.actions.createMerchant}
-          onUpdate={commerce.actions.updateMerchant}
-          onDelete={commerce.actions.deleteMerchant}
+          <div className="grid gap-6 xl:grid-cols-[360px,1fr]">
+            <MerchantPanel
+              state={commerce.state}
+              selectedMerchant={commerce.selectedMerchant}
+              onSelect={commerce.actions.selectMerchant}
+              onCreate={commerce.actions.createMerchant}
+              onUpdate={commerce.actions.updateMerchant}
+              onDelete={commerce.actions.deleteMerchant}
+              mutating={commerce.state.mutating}
+            />
+            <ItemPanel
+              selectedMerchant={commerce.selectedMerchant}
+              items={commerce.itemsForSelectedMerchant}
+              onCreate={commerce.actions.createItem}
+              onUpdate={commerce.actions.updateItem}
+              onDelete={commerce.actions.deleteItem}
+              mutating={commerce.state.mutating}
+            />
+          </div>
+
+          <CatalogPanel
+            catalog={commerce.state.catalog}
+            onSave={commerce.actions.saveCatalog}
+            mutating={commerce.state.mutating}
+          />
+        </>
+      ) : (
+        <SingleShopPanel
+          shop={commerce.state.shop}
+          onSave={commerce.actions.saveShop}
           mutating={commerce.state.mutating}
         />
-        <ItemPanel
-          selectedMerchant={commerce.selectedMerchant}
-          items={commerce.itemsForSelectedMerchant}
-          onCreate={commerce.actions.createItem}
-          onUpdate={commerce.actions.updateItem}
-          onDelete={commerce.actions.deleteItem}
-          mutating={commerce.state.mutating}
-        />
-      </div>
+      )}
 
-      <CatalogPanel
-        catalog={commerce.state.catalog}
-        onSave={commerce.actions.saveCatalog}
+      <ModeTogglePanel
+        isMultiMerchant={isMultiMerchant}
+        onToggle={commerce.actions.toggleMode}
         mutating={commerce.state.mutating}
       />
     </div>
@@ -216,7 +239,7 @@ const CommerceWizard = ({ wizard }: WizardProps) => {
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-black text-white">{step.id}</span>
                 {step.icon}
               </div>
-              <Badge variant={step.complete ? 'secondary' : 'outline'}>{step.complete ? 'Done' : 'Pending'}</Badge>
+              <Badge variant={step.complete ? 'default' : 'outline'}>{step.complete ? 'Done' : 'Pending'}</Badge>
             </div>
             <h3 className="font-semibold">{step.title}</h3>
             <ul className="mt-2 list-disc space-y-1 pl-4 text-muted-foreground">
@@ -344,7 +367,7 @@ const MerchantPanel = ({
                       <p className="font-medium">{merchant.name}</p>
                       <p className="text-xs text-muted-foreground">{merchant.shopDomain}</p>
                     </div>
-                    <Badge variant={merchant.isActive ? 'secondary' : 'outline'}>
+                    <Badge variant={merchant.isActive ? 'default' : 'outline'}>
                       {merchant.isActive ? 'Active' : 'Hidden'}
                     </Badge>
                   </button>
@@ -487,8 +510,7 @@ const ItemPanel = ({ selectedMerchant, items, mutating, onCreate, onUpdate, onDe
       isActive: draft.isActive,
     };
     if (editingId) {
-      const patch: ItemPatch = { ...basePayload };
-      delete (patch as Partial<ItemPatch>).merchantId;
+      const { merchantId: _, ...patch } = basePayload;
       await onUpdate(editingId, patch);
     } else {
       await onCreate(selectedMerchant.id, basePayload);
@@ -542,7 +564,7 @@ const ItemPanel = ({ selectedMerchant, items, mutating, onCreate, onUpdate, onDe
                       >
                         <div className="flex items-center justify-between gap-2">
                           <p className="font-medium">{item.title}</p>
-                          <Badge variant={item.isActive ? 'secondary' : 'outline'}>
+                          <Badge variant={item.isActive ? 'default' : 'outline'}>
                             {item.isActive ? 'Active' : 'Hidden'}
                           </Badge>
                         </div>

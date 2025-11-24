@@ -100,3 +100,29 @@ universal-art-link deploy    # POST bundle to configured endpoint
 - Cart data works without accounts. Clearing cookies/localStorage resets the cart.
 
 If CLI commands fail, read the error message—it points to the file/field that needs attention.
+
+## 5. Commerce suite
+
+UAL includes a Shopify integration that works in two modes:
+
+### Single-tenant (default)
+- One Shopify store per deployment
+- Products fetched live from Shopify Storefront API
+- No manual variant mapping needed
+- Perfect for individual artists/studios
+
+**Setup**:
+1. Get Shopify Storefront API token (Shopify Admin → Apps → Develop apps → Storefront API)
+2. Edit `content/commerce/shop.yaml` with your domain and token
+3. Add `/shop` link to site navigation
+4. Products auto-sync from Shopify with real prices and availability
+
+### Multi-merchant (opt-in)
+- Multiple Shopify stores in one catalog
+- Manual product curation via admin UI
+- Set `enableMultiMerchant: true` in `shop.yaml`
+- Perfect for collectives/marketplaces
+
+**Switching modes**: Toggle `enableMultiMerchant` in `content/commerce/shop.yaml` or use the admin panel button.
+
+See `docs/single-vs-multi-merchant.md` for detailed setup guides.

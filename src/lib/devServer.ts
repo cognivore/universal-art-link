@@ -5,7 +5,7 @@ import { Logger } from './logger.js';
 import { AdminService } from './adminService.js';
 import { readContentSnapshot, readSchemaDefinition, writeContentSnapshot } from './contentStore.js';
 import type { ContentSnapshot } from './contentStore.js';
-import type { CatalogInput } from '../types/commerce.js';
+import type { CatalogInput, SingleShopConfig } from '../types/commerce.js';
 import { PathConfig } from './paths.js';
 import {
   createMerchant,
@@ -13,7 +13,10 @@ import {
   deleteMerchant,
   deleteMerchantItem,
   readCommerceData,
+  readShopConfig,
   saveCatalogConfig,
+  saveShopConfig,
+  toggleMultiMerchantMode,
   updateMerchant,
   updateMerchantItem,
 } from './commerceStore.js';
@@ -284,6 +287,28 @@ const handleCommerceApi = async (
       const body = await readJsonBody(req);
       const catalog = await saveCatalogConfig(paths, body as CatalogInput);
       respondJson(res, 200, catalog);
+      return true;
+    }
+
+    if (segments[0] === 'shop') {
+      if (method === 'GET') {
+        const shop = await readShopConfig(paths);
+        respondJson(res, 200, shop ?? {});
+        return true;
+      }
+      if (method === 'POST') {
+        const body = await readJsonBody(req);
+        const shop = await saveShopConfig(paths, body as Partial<SingleShopConfig>);
+        respondJson(res, 200, shop);
+        return true;
+      }
+    }
+
+    if (segments[0] === 'mode' && method === 'POST') {
+      const body = await readJsonBody(req);
+      const enabled = Boolean(body.enableMultiMerchant);
+      await toggleMultiMerchantMode(paths, enabled);
+      respondJson(res, 200, { enableMultiMerchant: enabled });
       return true;
     }
 

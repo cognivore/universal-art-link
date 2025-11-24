@@ -395,21 +395,74 @@ const renderMerchantItemsSection = (merchant: Merchant, items: MerchantItem[]): 
   </section>`;
 };
 
-const renderCartSection = (): string => {
+const renderCartSection = (isSingleTenant = false, shopName = ''): string => {
+  const noteText = isSingleTenant
+    ? 'Review your items below and click checkout to complete your purchase on Shopify.'
+    : 'Your cart may include items from multiple businesses. You will complete a separate Shopify checkout for each merchant.';
+
+  const emptyMessage = isSingleTenant
+    ? `No items yet. Visit the shop to browse ${shopName ? shopName + ' offerings' : 'available products'}.`
+    : 'No items yet. Visit the merchants catalog to add prints, services, or tutoring sessions.';
+
+  const emptyLink = isSingleTenant
+    ? `<a class="btn btn--solid" href="/shop">Browse shop</a>`
+    : `<a class="btn btn--solid" href="/merchants">Browse merchants</a>`;
+
   return `<section class="section commerce-cart stack" data-cart-root>
     <div class="stack">
       <p class="kicker">Shopify checkout</p>
       <h1 class="display">Your cart</h1>
       <p class="measure" data-cart-note>
-        Your cart may include items from multiple businesses. You will complete a separate Shopify checkout for each merchant.
+        ${escapeHtmlLite(noteText)}
       </p>
     </div>
     <div class="commerce-cart__groups" data-cart-groups></div>
     <div class="commerce-cart__empty" data-cart-empty>
-      <p class="measure">No items yet. Visit the merchants catalog to add prints, services, or tutoring sessions.</p>
-      <a class="btn btn--solid" href="/merchants">Browse merchants</a>
+      <p class="measure">${escapeHtmlLite(emptyMessage)}</p>
+      ${emptyLink}
     </div>
   </section>`;
+};
+
+const buildSingleShopPageDefinition = (site: SiteConfig, commerce: CommerceSnapshot): CommercePageDefinition | null => {
+  if (!commerce.shop || !commerce.shop.domain) {
+    return null;
+  }
+
+  const shopData = {
+    domain: commerce.shop.domain,
+    name: commerce.shop.name,
+    description: commerce.shop.description,
+    logoUrl: commerce.shop.logoUrl,
+    storefrontAccessToken: commerce.shop.storefrontAccessToken || '',
+    featuredCollection: commerce.shop.featuredCollection || '',
+    cartNote: commerce.shop.cartNote || `Order via ${site.siteTitle}`,
+  };
+
+  const shopScript = createCommerceDataScript({ mode: 'single-tenant', shop: shopData });
+  const storefrontScriptTag = `<script defer src="../scripts/shopify-storefront.js"></script>`;
+
+  const heroSection = `<section class="section commerce-hero stack">
+    <p class="kicker">Studio shop</p>
+    <h1 class="display">${escapeHtmlLite(commerce.shop.name)}</h1>
+    <p class="measure">${escapeHtmlLite(commerce.shop.description || 'Browse our offerings')}</p>
+    <div class="commerce-hero__actions">
+      <a class="btn btn--ghost" href="/cart">View cart</a>
+    </div>
+  </section>`;
+
+  const catalogSection = `<section class="section commerce-item-grid stack" data-shop-catalog>
+    <div class="commerce-loading">
+      <p class="measure">Loading products from Shopify…</p>
+    </div>
+  </section>`;
+
+  return {
+    slug: '/shop',
+    title: commerce.shop.name,
+    description: commerce.shop.description || `Shop from ${commerce.shop.name}`,
+    sections: [heroSection, catalogSection, shopScript, storefrontScriptTag],
+  };
 };
 
 const buildCommercePageDefinitions = (site: SiteConfig, commerce: CommerceSnapshot): CommercePageDefinition[] => {
@@ -476,7 +529,7 @@ const buildCommercePageDefinitions = (site: SiteConfig, commerce: CommerceSnapsh
     slug: '/cart',
     title: 'Cart',
     description: 'Grouped checkout links that redirect shoppers to Shopify.',
-    sections: [renderCartSection(), commerceScript],
+    sections: [renderCartSection(false, ''), commerceScript],
   });
 
   return pages;
@@ -554,11 +607,35 @@ export const buildSite = async ({ rootDir, outDir, invalidateTemplates }: BuildO
     }
   }
 
-  const commercePages = buildCommercePageDefinitions(siteConfig, commerce);
   const commercePreviewPaths: string[] = [];
-  for (const commercePage of commercePages) {
-    rendered.push(await renderCommercePage(commercePage, siteConfig, paths));
-    commercePreviewPaths.push(commercePage.slug);
+
+  if (commerce.enableMultiMerchant) {
+    // Multi-merchant mode: generate /merchants pages
+    const commercePages = buildCommercePageDefinitions(siteConfig, commerce);
+    for (const commercePage of commercePages) {
+      rendered.push(await renderCommercePage(commercePage, siteConfig, paths));
+      commercePreviewPaths.push(commercePage.slug);
+    }
+  } else {
+    // Single-tenant mode: generate /shop page
+    const shopPage = buildSingleShopPageDefinition(siteConfig, commerce);
+    if (shopPage) {
+      rendered.push(await renderCommercePage(shopPage, siteConfig, paths));
+      commercePreviewPaths.push(shopPage.slug);
+    }
+
+    // Always generate /cart page
+    const cartPage: CommercePageDefinition = {
+      slug: '/cart',
+      title: 'Cart',
+      description: 'Your shopping cart',
+      sections: [renderCartSection(true, commerce.shop?.name || ''), createCommerceDataScript({
+        mode: 'single-tenant',
+        shop: commerce.shop
+      })],
+    };
+    rendered.push(await renderCommercePage(cartPage, siteConfig, paths));
+    commercePreviewPaths.push('/cart');
   }
 
   await Promise.all(

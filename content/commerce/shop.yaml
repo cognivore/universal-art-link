@@ -1,29 +1,11 @@
-# Single-tenant shop configuration
-# This is the default commerce mode - one Shopify store per deployment
-
 shop:
-  # Your Shopify store domain (can be *.myshopify.com or custom domain)
   domain: "studio-loom.myshopify.com"
-
-  # Shop display settings
   name: "Studio Loom"
   description: "Letterpress prints and workshops"
   logoUrl: "/assets/project-elan.svg"
-
-  # Storefront API access token (PUBLIC token, safe to commit)
-  # Get this from: Shopify Admin > Apps > Develop apps > Create an app > Storefront API
-  # Only needs: unauthenticated_read_product_listings
   storefrontAccessToken: ""
-
-  # Optional: Featured collection handle to display
-  # Leave empty to show all available products
   featuredCollection: ""
-
-  # Cart/checkout settings
   cartNote: "Order via Studio Loom"
 
-# Enable this flag to switch to multi-merchant mode
-# Set via CLI: pnpm cli dev --multi-merchant
-# or environment: UAL_MULTI_MERCHANT=true
 enableMultiMerchant: false
 

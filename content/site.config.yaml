@@ -22,7 +22,7 @@ navigation:
   - label: Journal
     href: /journal
   - label: Shop
-    href: /merchants
+    href: /shop
   - label: Contact
     href: /contact
 socialLinks:

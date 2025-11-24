@@ -39,10 +39,22 @@ export type CommerceCatalog = {
   };
 };
 
+export type ShopConfig = {
+  domain: string;
+  name: string;
+  description?: string;
+  logoUrl?: string;
+  storefrontAccessToken?: string;
+  featuredCollection?: string;
+  cartNote?: string;
+};
+
 export type CommerceSnapshot = {
   merchants: CommerceMerchant[];
   items: CommerceItem[];
   catalog?: CommerceCatalog;
+  shop?: ShopConfig;
+  enableMultiMerchant?: boolean;
 };
 
 export type MerchantPayload = {
@@ -170,5 +182,38 @@ export const saveCommerceCatalog = async (
     body: JSON.stringify(payload),
   });
   return handleResponse<CommerceCatalog>(response);
+};
+
+export const getShopConfig = async (config: AdminRuntimeConfig): Promise<ShopConfig | null> => {
+  const response = await fetch(withBase(config, '/shop'), {
+    credentials: 'include',
+  });
+  return handleResponse<ShopConfig>(response);
+};
+
+export const saveShopConfig = async (
+  config: AdminRuntimeConfig,
+  payload: Partial<ShopConfig>,
+): Promise<ShopConfig> => {
+  const response = await fetch(withBase(config, '/shop'), {
+    method: 'POST',
+    headers: jsonHeaders,
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<ShopConfig>(response);
+};
+
+export const toggleMultiMerchantMode = async (
+  config: AdminRuntimeConfig,
+  enabled: boolean,
+): Promise<{ enableMultiMerchant: boolean }> => {
+  const response = await fetch(withBase(config, '/mode'), {
+    method: 'POST',
+    headers: jsonHeaders,
+    credentials: 'include',
+    body: JSON.stringify({ enableMultiMerchant: enabled }),
+  });
+  return handleResponse<{ enableMultiMerchant: boolean }>(response);
 };
 

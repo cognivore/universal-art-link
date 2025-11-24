@@ -13,6 +13,7 @@ import {
   MerchantItemInput,
   MerchantItemPatch,
   MerchantPatch,
+  SingleShopConfig,
 } from '../types/commerce.js';
 import { PathConfig } from './paths.js';
 
@@ -109,9 +110,9 @@ const sortItems = (items: MerchantItem[]): MerchantItem[] =>
     return a.title.localeCompare(b.title);
   });
 
-const validateSnapshot = (snapshot: CommerceSnapshot): CommerceSnapshot => {
+const validateSnapshot = (snapshot: unknown): CommerceSnapshot => {
   const parsed = CommerceDataSchema.parse(snapshot);
-  return parsed;
+  return parsed as CommerceSnapshot;
 };
 
 export const readCommerceData = async (paths: PathConfig): Promise<CommerceSnapshot> => {
@@ -121,7 +122,7 @@ export const readCommerceData = async (paths: PathConfig): Promise<CommerceSnaps
     readYamlIfExists<CatalogConfig | undefined>(catalogFile(paths), undefined),
     readYamlIfExists<{ shop?: Record<string, unknown>; enableMultiMerchant?: boolean }>(shopFile(paths), {}),
   ]);
-  const snapshot: CommerceSnapshot = {
+  const snapshot = {
     merchants: merchantsPayload.merchants ?? [],
     items: merchantsPayload.items ?? [],
     catalog: catalog,
@@ -325,5 +326,49 @@ export const getCommerceCatalog = async (paths: PathConfig): Promise<CatalogConf
 export const getActiveMerchants = async (paths: PathConfig): Promise<Merchant[]> => {
   const snapshot = await readCommerceData(paths);
   return snapshot.merchants.filter((merchant) => merchant.isActive).sort((a, b) => a.name.localeCompare(b.name));
+};
+
+export const readShopConfig = async (paths: PathConfig): Promise<SingleShopConfig | null> => {
+  const snapshot = await readCommerceData(paths);
+  return snapshot.shop ?? null;
+};
+
+export const saveShopConfig = async (paths: PathConfig, config: Partial<SingleShopConfig>): Promise<SingleShopConfig> => {
+  const snapshot = await readCommerceData(paths);
+  const current = snapshot.shop ?? {
+    domain: '',
+    name: '',
+    description: '',
+    storefrontAccessToken: '',
+    featuredCollection: '',
+    cartNote: '',
+  };
+
+  const updated: SingleShopConfig = {
+    domain: config.domain?.trim() || current.domain,
+    name: config.name?.trim() || current.name,
+    description: config.description?.trim() || current.description,
+    logoUrl: config.logoUrl?.trim() || current.logoUrl,
+    storefrontAccessToken: config.storefrontAccessToken?.trim() || current.storefrontAccessToken,
+    featuredCollection: config.featuredCollection?.trim() || current.featuredCollection,
+    cartNote: config.cartNote?.trim() || current.cartNote,
+  };
+
+  const shopData = {
+    shop: updated,
+    enableMultiMerchant: snapshot.enableMultiMerchant,
+  };
+
+  await writeYaml(shopFile(paths), shopData);
+  return updated;
+};
+
+export const toggleMultiMerchantMode = async (paths: PathConfig, enabled: boolean): Promise<void> => {
+  const snapshot = await readCommerceData(paths);
+  const shopData = {
+    shop: snapshot.shop,
+    enableMultiMerchant: enabled,
+  };
+  await writeYaml(shopFile(paths), shopData);
 };
 

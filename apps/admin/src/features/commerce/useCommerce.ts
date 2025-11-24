@@ -11,12 +11,15 @@ import {
   deleteCommerceMerchant,
   fetchCommerceSnapshot,
   saveCommerceCatalog,
+  saveShopConfig,
+  toggleMultiMerchantMode,
   updateCommerceItem,
   updateCommerceMerchant,
   type ItemPatch,
   type ItemPayload,
   type MerchantPatch,
   type MerchantPayload,
+  type ShopConfig,
 } from '../../lib/commerce-api';
 
 type CommerceStatus = { message: string; variant: 'success' | 'error' | 'muted' };
@@ -28,6 +31,8 @@ type CommerceState = {
   merchants: CommerceMerchant[];
   items: CommerceItem[];
   catalog?: CommerceCatalog;
+  shop?: ShopConfig | null;
+  enableMultiMerchant: boolean;
   selectedMerchantId: string | null;
   status: CommerceStatus | null;
 };
@@ -39,6 +44,8 @@ const initialState: CommerceState = {
   merchants: [],
   items: [],
   catalog: undefined,
+  shop: null,
+  enableMultiMerchant: false,
   selectedMerchantId: null,
   status: null,
 };
@@ -67,6 +74,8 @@ export const useCommerce = (config: AdminRuntimeConfig) => {
           merchants: data.merchants,
           items: data.items,
           catalog: data.catalog,
+          shop: data.shop ?? null,
+          enableMultiMerchant: data.enableMultiMerchant ?? false,
           selectedMerchantId: ensureSelectedMerchant(data, prev.selectedMerchantId),
         }));
       } catch (error) {
@@ -244,6 +253,48 @@ export const useCommerce = (config: AdminRuntimeConfig) => {
     };
   }, [itemsForSelectedMerchant.length, state.catalog?.hero?.title, state.merchants.length]);
 
+  const updateShop = useCallback(
+    async (payload: Partial<ShopConfig>) => {
+      setState((prev) => ({ ...prev, mutating: true }));
+      try {
+        const updated = await saveShopConfig(config, payload);
+        setState((prev) => ({
+          ...prev,
+          mutating: false,
+          shop: updated,
+          status: { message: 'Shop configuration saved', variant: 'success' },
+        }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to save shop config';
+        setState((prev) => ({ ...prev, mutating: false, status: { message, variant: 'error' } }));
+      }
+    },
+    [config],
+  );
+
+  const toggleMode = useCallback(
+    async (enabled: boolean) => {
+      setState((prev) => ({ ...prev, mutating: true }));
+      try {
+        await toggleMultiMerchantMode(config, enabled);
+        setState((prev) => ({
+          ...prev,
+          mutating: false,
+          enableMultiMerchant: enabled,
+          status: {
+            message: `Switched to ${enabled ? 'multi-merchant' : 'single-tenant'} mode`,
+            variant: 'success',
+          },
+        }));
+        await hydrate();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to toggle mode';
+        setState((prev) => ({ ...prev, mutating: false, status: { message, variant: 'error' } }));
+      }
+    },
+    [config, hydrate],
+  );
+
   return {
     state,
     selectedMerchant,
@@ -259,6 +310,8 @@ export const useCommerce = (config: AdminRuntimeConfig) => {
       updateItem,
       deleteItem: removeItem,
       saveCatalog: updateCatalog,
+      saveShop: updateShop,
+      toggleMode,
       setStatus,
     },
   };
