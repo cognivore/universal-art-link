@@ -75,19 +75,50 @@ proc dns_create_a_record (subdomain, ip) {
   # Get secrets
   get_porkbun_secrets
 
-  # Delete existing record first
   var auth_payload = $(jq -n \
     --arg apikey "$PKB_API_KEY" \
     --arg secret "$PKB_API_SECRET" \
     '{apikey: $apikey, secretapikey: $secret}')
 
+  # Step 1: DELETE existing record(s) first - Porkbun requires this!
+  log "Deleting existing A record(s)..."
   if test -n "$subdomain" {
-    porkbun_request "/dns/deleteByNameType/$domain/A/$subdomain" "$auth_payload" > /dev/null 2>&1
+    var del_response = $(porkbun_request "/dns/deleteByNameType/$domain/A/$subdomain" "$auth_payload")
+    log "Delete response: $(echo "$del_response" | jq -r '.status // "unknown"')"
   } else {
-    porkbun_request "/dns/deleteByNameType/$domain/A" "$auth_payload" > /dev/null 2>&1
+    # For apex domain, we need to retrieve and delete conflicting records
+    # ALIAS records conflict with A records - must delete them first!
+    var records_response = $(porkbun_request "/dns/retrieve/$domain" "$auth_payload")
+    
+    # Delete any existing A records at apex
+    var apex_a_ids = $(echo "$records_response" | jq -r --arg d "$domain" '.records[] | select(.type == "A" and .name == $d) | .id')
+    for record_id in $apex_a_ids {
+      if test -n "$record_id" {
+        log "Deleting apex A record (id: $record_id)..."
+        porkbun_request "/dns/delete/$domain/$record_id" "$auth_payload" > /dev/null 2>&1
+      }
+    }
+    
+    # Delete any ALIAS records at apex - they conflict with A records!
+    var apex_alias_ids = $(echo "$records_response" | jq -r --arg d "$domain" '.records[] | select(.type == "ALIAS" and .name == $d) | .id')
+    for record_id in $apex_alias_ids {
+      if test -n "$record_id" {
+        log "Deleting apex ALIAS record (id: $record_id) - conflicts with A record..."
+        porkbun_request "/dns/delete/$domain/$record_id" "$auth_payload" > /dev/null 2>&1
+      }
+    }
+    
+    if test -z "$apex_a_ids" && test -z "$apex_alias_ids" {
+      log "No conflicting apex records found"
+    }
   }
 
-  # Create new record
+  # Step 2: Wait a moment for delete to propagate in Porkbun's system
+  log "Waiting for delete to process..."
+  sleep 2
+
+  # Step 3: CREATE new record
+  log "Creating new A record..."
   var payload = $(jq -n \
     --arg apikey "$PKB_API_KEY" \
     --arg secret "$PKB_API_SECRET" \
@@ -114,6 +145,8 @@ proc dns_create_a_record (subdomain, ip) {
     return 0
   }
 
+  # Log the actual error for debugging
+  log_error "Create failed: $(echo "$response" | jq -r '.message // "unknown error"')"
   return 1
 }
 
