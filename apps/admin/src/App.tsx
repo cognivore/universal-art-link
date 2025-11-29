@@ -3,11 +3,36 @@ import { AdminShell } from './components/admin/AdminShell';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { ContentStudio } from './features/cms/ContentStudio';
 import { CommerceSuite } from './features/commerce/CommerceSuite';
+import { StripeCommerce } from './features/stripe/StripeCommerce';
+import { LoginPage } from './features/auth/LoginPage';
+import { useAuth } from './hooks/useAuth';
+import { isStripeMode } from './lib/runtime-config';
 
-type AdminView = 'content' | 'commerce';
+type AdminView = 'content' | 'commerce' | 'stripe';
+
+const LoadingSpinner = () => (
+  <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-slate-100 to-slate-200">
+    <div className="flex items-center gap-3">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
+      <span className="text-lg text-slate-600">Loading...</span>
+    </div>
+  </div>
+);
 
 export const App = () => {
-  const [view, setView] = useState<AdminView>('content');
+  const { session, loading, requiresAuth } = useAuth();
+  const stripeMode = isStripeMode();
+  const [view, setView] = useState<AdminView>(stripeMode ? 'stripe' : 'content');
+
+  // Show loading state while checking auth
+  if (loading) {
+    return <LoadingSpinner />;
+  }
+
+  // Show login page if auth is required and user is not authenticated
+  if (requiresAuth && !session?.authenticated) {
+    return <LoginPage />;
+  }
 
   return (
     <AdminShell>
@@ -16,16 +41,30 @@ export const App = () => {
           <TabsTrigger value="content" className="flex-1">
             Content Studio
           </TabsTrigger>
-          <TabsTrigger value="commerce" className="flex-1">
-            Commerce Suite
-          </TabsTrigger>
+          {!stripeMode && (
+            <TabsTrigger value="commerce" className="flex-1">
+              Shopify Commerce
+            </TabsTrigger>
+          )}
+          {stripeMode && (
+            <TabsTrigger value="stripe" className="flex-1">
+              Stripe Commerce
+            </TabsTrigger>
+          )}
         </TabsList>
         <TabsContent value="content">
           <ContentStudio />
         </TabsContent>
-        <TabsContent value="commerce">
-          <CommerceSuite />
-        </TabsContent>
+        {!stripeMode && (
+          <TabsContent value="commerce">
+            <CommerceSuite />
+          </TabsContent>
+        )}
+        {stripeMode && (
+          <TabsContent value="stripe">
+            <StripeCommerce />
+          </TabsContent>
+        )}
       </Tabs>
     </AdminShell>
   );

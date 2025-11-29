@@ -1,0 +1,8 @@
+# Authorized admin email addresses for magic link authentication
+# Add email addresses here to grant access to the admin panel
+# When running with --single-tenant-stripe, only these emails can log in
+
+admins:
+  - email: "your-email@example.com"  # Replace with your actual email
+    name: "Your Name"
+

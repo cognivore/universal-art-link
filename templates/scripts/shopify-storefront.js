@@ -199,3 +199,8 @@ const formatShopifyPrice = (amount, currencyCode = 'USD') => {
   return formatter.format(parseFloat(amount));
 };
 
+
+
+
+
+

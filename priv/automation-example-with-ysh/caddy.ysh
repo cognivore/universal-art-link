@@ -1,0 +1,225 @@
+#!/usr/bin/env ysh
+# =============================================================================
+# Caddy TLS Activation
+# Verifies DNS and enables Caddy for TLS termination
+# =============================================================================
+
+source-guard caddy.ysh || return 0
+
+source $_this_dir/lib/config.ysh
+
+# -----------------------------------------------------------------------------
+# Get Instance IP
+# -----------------------------------------------------------------------------
+
+proc get_instance_ip {
+  gcloud compute instances describe $[CONFIG.instance_name] \
+    --project=$[CONFIG.project] \
+    --zone=$[CONFIG.zone] \
+    --format='get(networkInterfaces[0].accessConfigs[0].natIP)'
+}
+
+# -----------------------------------------------------------------------------
+# DNS Verification
+# -----------------------------------------------------------------------------
+
+proc verify_dns (expected_ip) {
+  log_section "Verifying DNS Configuration"
+
+  var current_ip = $(dig +short "$[CONFIG.domain]" A | head -1)
+
+  if test -z "$current_ip" {
+    log "WARNING: No DNS record found for $[CONFIG.domain]"
+    log "Expected: $expected_ip"
+    return 1
+  }
+
+  if test "$current_ip" != "$expected_ip" {
+    log "WARNING: DNS mismatch!"
+    log "  Current:  $current_ip"
+    log "  Expected: $expected_ip"
+    return 1
+  }
+
+  log "DNS correctly configured: $[CONFIG.domain] -> $expected_ip"
+  return 0
+}
+
+proc wait_for_dns (expected_ip) {
+  log_section "Waiting for DNS Propagation"
+  log "Expected: $[CONFIG.domain] -> $expected_ip"
+
+  var start_ts = $(date +%s)
+  var timeout = CONFIG.dns_timeout_seconds
+  var interval = CONFIG.dns_poll_interval
+
+  while true {
+    var now_ts = $(date +%s)
+    var elapsed = now_ts - start_ts
+
+    if (elapsed >= timeout) {
+      log "ERROR: Timed out after $[timeout / 60] minutes waiting for DNS"
+      return 1
+    }
+
+    var answers = $(dig +short A "$[CONFIG.domain]" 2>/dev/null || true)
+    log "[$(date +%H:%M:%S)] A records: ${answers:-<none>}"
+
+    # Check if expected IP is in the answers (without pipeline in conditional)
+    case $answers in
+      (*$expected_ip*)
+        log ""
+        log "DNS propagation complete!"
+        return 0
+        ;;
+    esac
+
+    sleep $interval
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Caddy Configuration
+# -----------------------------------------------------------------------------
+
+proc configure_caddy_remote {
+  log_section "Configuring Caddy on Remote Instance"
+
+  # First, ensure SSH is available and startup script has completed
+  wait_for_ssh $[CONFIG.instance_name] $[CONFIG.project] $[CONFIG.zone]
+  wait_for_startup_complete $[CONFIG.instance_name] $[CONFIG.project] $[CONFIG.zone]
+
+  # Build Caddyfile content
+  # Cache-Control: no-store ensures CDNs like CloudFront don't cache garbage responses
+  # This is critical for load testing - every request must hit iocaine to generate fresh garbage
+  var caddyfile = "$[CONFIG.domain] {
+    reverse_proxy 127.0.0.1:$[CONFIG.iocaine_port]
+
+    # Disable caching for all responses - iocaine generates unique garbage
+    # that should never be cached by CDNs
+    header Cache-Control \"no-store, no-cache, must-revalidate\"
+
+    log {
+        output file /var/log/caddy/access.log
+    }
+}"
+
+  # Base64 encode for safe transmission (macOS uses -b 0, Linux uses -w 0)
+  var caddy_b64 = ''
+  try {
+    setvar caddy_b64 = $(echo "$caddyfile" | base64 -w 0 2>/dev/null)
+  }
+  if (caddy_b64 === '') {
+    # macOS fallback (no -w option, outputs single line by default with -b 0)
+    setvar caddy_b64 = $(echo "$caddyfile" | base64)
+  }
+
+  log "Configuring Caddy..."
+
+  # Retry SSH command up to 3 times
+  var ssh_attempt = 1
+  var ssh_max = 3
+
+  while (ssh_attempt <= ssh_max) {
+    log "SSH configuration attempt $ssh_attempt/$ssh_max..."
+
+    try {
+      gcloud compute ssh "$[CONFIG.instance_name]" \
+        --project="$[CONFIG.project]" \
+        --zone="$[CONFIG.zone]" \
+        --ssh-flag="-o StrictHostKeyChecking=no" \
+        --command="sudo bash -lc 'set -e
+
+# Ensure Caddy is installed
+if ! command -v caddy >/dev/null 2>&1; then
+  echo \"Installing Caddy...\"
+  install -d -m 0755 /usr/share/keyrings
+  curl -1sLf \"https://dl.cloudsmith.io/public/caddy/stable/gpg.key\" | gpg --batch --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  curl -1sLf \"https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt\" | tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
+  apt-get update -y
+  apt-get install -y caddy
+fi
+
+# Write Caddyfile
+echo $caddy_b64 | base64 -d | tee /etc/caddy/Caddyfile >/dev/null
+
+# Create log directory with proper permissions
+mkdir -p /var/log/caddy
+chown -R caddy:caddy /var/log/caddy
+chmod 755 /var/log/caddy
+touch /var/log/caddy/access.log
+chown caddy:caddy /var/log/caddy/access.log
+
+# Stop any existing caddy
+systemctl stop caddy || true
+
+# Validate Caddyfile
+echo \"Validating Caddyfile...\"
+caddy validate --config /etc/caddy/Caddyfile
+
+# Start Caddy
+echo \"Starting Caddy...\"
+systemctl daemon-reload
+systemctl enable caddy
+systemctl start caddy
+
+# Wait and check status
+sleep 3
+if systemctl is-active --quiet caddy; then
+  echo \"Caddy started successfully!\"
+  caddy version
+else
+  echo \"ERROR: Caddy failed to start\"
+  journalctl -u caddy --no-pager -n 20
+  exit 1
+fi
+'" > /dev/null
+
+      log "Caddy configured and started"
+      return 0
+    }
+
+    log "SSH command failed, retrying in 15 seconds..."
+    sleep 15
+    setvar ssh_attempt = ssh_attempt + 1
+  }
+
+  log "ERROR: Failed to configure Caddy after $ssh_max attempts"
+  return 1
+}
+
+# -----------------------------------------------------------------------------
+# Main Enable Function
+# -----------------------------------------------------------------------------
+
+proc enable_caddy {
+  require_commands gcloud dig
+
+  # Get instance IP
+  var ip = $(get_instance_ip)
+  log "Instance IP: $ip"
+
+  # Wait for DNS
+  wait_for_dns $ip
+
+  # Configure Caddy
+  configure_caddy_remote
+
+  log_section "TLS Activation Complete!"
+  log ""
+  log "Your iocaine instance is accessible at:"
+  log "  https://$[CONFIG.domain]"
+  log ""
+  log "Test with:"
+  log "  curl -v -A \"GPTBot/1.0\" https://$[CONFIG.domain]/"
+  log "  curl -v -A \"Mozilla/5.0 Chrome/120.0.0.0\" https://$[CONFIG.domain]/"
+  log ""
+}
+
+# -----------------------------------------------------------------------------
+# Run if executed directly
+# -----------------------------------------------------------------------------
+
+if is-main {
+  enable_caddy
+}

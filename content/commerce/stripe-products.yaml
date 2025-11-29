@@ -1,0 +1,37 @@
+# Stripe Products Configuration
+# Products defined here will be available for purchase when running in --single-tenant-stripe mode
+# Each product syncs with Stripe Checkout for secure payment processing
+
+products:
+  # Example one-time purchase product
+  # - id: prod_example1
+  #   name: "Print Pack (3x A3)"
+  #   description: "Chromatic giclée prints from the Meridian archive"
+  #   imageUrl: "/assets/print-pack.svg"
+  #   type: one_time
+  #   priceAmountCents: 12000
+  #   currency: USD
+  #   interval: null
+  #   intervalCount: null
+  #   isActive: true
+  #   sortOrder: 0
+  #   metadata: {}
+  #   createdAt: "2025-01-01T00:00:00.000Z"
+  #   updatedAt: "2025-01-01T00:00:00.000Z"
+
+  # Example subscription product
+  # - id: prod_example2
+  #   name: "Studio Membership"
+  #   description: "Monthly access to workshops and exclusive prints"
+  #   imageUrl: "/assets/membership.svg"
+  #   type: subscription
+  #   priceAmountCents: 2900
+  #   currency: USD
+  #   interval: month
+  #   intervalCount: 1
+  #   isActive: true
+  #   sortOrder: 1
+  #   metadata: {}
+  #   createdAt: "2025-01-01T00:00:00.000Z"
+  #   updatedAt: "2025-01-01T00:00:00.000Z"
+

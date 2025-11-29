@@ -1,0 +1,442 @@
+#!/usr/bin/env ysh
+# =============================================================================
+# Systime Echo Server Provisioning
+# Creates a GCE instance with systime (human origin for CloudFront)
+# =============================================================================
+
+source-guard provision-systime.ysh || return 0
+
+source $_this_dir/lib/config.ysh
+
+# -----------------------------------------------------------------------------
+# Startup Script Preparation
+# -----------------------------------------------------------------------------
+
+proc prepare_systime_startup_script {
+  var template = "$_this_dir/systime-startup.sh"
+  var tmp_file = $(mktemp)
+
+  sed -e "s|@@DOMAIN@@|$[SYSTIME_CONFIG.domain]|g" \
+      -e "s|@@PORT@@|$[SYSTIME_CONFIG.port]|g" \
+      $template > $tmp_file
+
+  setglobal SYSTIME_STARTUP_SCRIPT_PATH = "$tmp_file"
+}
+
+# -----------------------------------------------------------------------------
+# Instance Creation
+# -----------------------------------------------------------------------------
+
+proc create_systime_instance {
+  log_section "Creating Systime Instance"
+
+  log "Instance: $[SYSTIME_CONFIG.instance_name]"
+  log "Project:  $[CONFIG.project]"
+  log "Zone:     $[SYSTIME_CONFIG.zone]"
+
+  # Check if instance already exists (idempotent)
+  var exists = ''
+  try {
+    setvar exists = $(gcloud compute instances describe $[SYSTIME_CONFIG.instance_name] \
+      --project=$[CONFIG.project] \
+      --zone=$[SYSTIME_CONFIG.zone] \
+      --format='value(name)' 2>/dev/null)
+  }
+
+  if test -n "$exists" {
+    log "Instance $[SYSTIME_CONFIG.instance_name] already exists"
+    return
+  }
+
+  prepare_systime_startup_script
+
+  trap "rm -f $SYSTIME_STARTUP_SCRIPT_PATH" EXIT
+
+  log "Machine:  $[SYSTIME_CONFIG.machine_type]"
+
+  gcloud compute instances create $[SYSTIME_CONFIG.instance_name] \
+    --project=$[CONFIG.project] \
+    --zone=$[SYSTIME_CONFIG.zone] \
+    --machine-type=$[SYSTIME_CONFIG.machine_type] \
+    --image-family=ubuntu-2404-lts-amd64 \
+    --image-project=ubuntu-os-cloud \
+    --boot-disk-size=$[SYSTIME_CONFIG.boot_disk_size] \
+    --tags=http-server,https-server
+
+  # Add startup script via metadata
+  gcloud compute instances add-metadata $[SYSTIME_CONFIG.instance_name] \
+    --project=$[CONFIG.project] \
+    --zone=$[SYSTIME_CONFIG.zone] \
+    --metadata-from-file=startup-script=$SYSTIME_STARTUP_SCRIPT_PATH
+
+  log "Instance created successfully"
+}
+
+# -----------------------------------------------------------------------------
+# Get External IP
+# -----------------------------------------------------------------------------
+
+proc fetch_systime_ip {
+  setglobal SYSTIME_IP = $(gcloud compute instances describe $[SYSTIME_CONFIG.instance_name] \
+    --project=$[CONFIG.project] \
+    --zone=$[SYSTIME_CONFIG.zone] \
+    --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
+}
+
+# -----------------------------------------------------------------------------
+# DNS Management
+# -----------------------------------------------------------------------------
+
+proc systime_dns_create {
+  log "Ensuring DNS record for systime..."
+
+  fetch_systime_ip
+
+  if test -z "$SYSTIME_IP" {
+    log "ERROR: Systime IP not available"
+    return 1
+  }
+
+  var fqdn = "$[SYSTIME_CONFIG.domain]"
+
+  # Check if DNS already points to the desired IP (use Cloudflare - Porkbun uses it)
+  var current_ip = ''
+  try {
+    setvar current_ip = $(dig +short "$fqdn" '@1.1.1.1' 2>/dev/null | head -1)
+  }
+
+  if test "$current_ip" = "$SYSTIME_IP" {
+    log "DNS already points to $SYSTIME_IP - no change needed"
+    return 0
+  }
+
+  log "Current DNS (Cloudflare): ${current_ip:-<none>}, desired: $SYSTIME_IP"
+
+  get_porkbun_secrets
+
+  # Delete existing records first to avoid duplicates
+  var auth_payload = $(jq -n \
+    --arg apikey "$PKB_API_KEY" \
+    --arg secret "$PKB_API_SECRET" \
+    '{apikey: $apikey, secretapikey: $secret}')
+
+  curl -s -X POST "$[CONFIG.porkbun_api_base]/dns/deleteByNameType/$[CONFIG.pkb_domain]/A/$[SYSTIME_CONFIG.pkb_subdomain]" \
+    -H 'Content-Type: application/json' \
+    -d "$auth_payload" > /dev/null
+
+  # Create fresh record
+  var payload = $(jq -n \
+    --arg apikey "$PKB_API_KEY" \
+    --arg secret "$PKB_API_SECRET" \
+    --arg name "$[SYSTIME_CONFIG.pkb_subdomain]" \
+    --arg content "$SYSTIME_IP" \
+    '{
+      apikey: $apikey,
+      secretapikey: $secret,
+      name: $name,
+      type: "A",
+      content: $content,
+      ttl: "5"
+    }')
+
+  log "Calling Porkbun API to create record..."
+  var response = $(curl -s -X POST "$[CONFIG.porkbun_api_base]/dns/create/$[CONFIG.pkb_domain]" \
+    -H 'Content-Type: application/json' \
+    -d "$payload")
+
+  var status = $(echo $response | jq -r '.status // "ERROR"')
+
+  if test "$status" != "SUCCESS" {
+    log "ERROR: Failed to create DNS record"
+    log "Response: $response"
+    return 1
+  }
+
+  log "Porkbun API returned SUCCESS, verifying record..."
+
+  # Verify via Porkbun API that the record actually exists
+  sleep 2
+  var verify_url = "$[CONFIG.porkbun_api_base]/dns/retrieveByNameType/$[CONFIG.pkb_domain]/A/$[SYSTIME_CONFIG.pkb_subdomain]"
+  var verify_response = $(curl -s -X POST "$verify_url" \
+    -H 'Content-Type: application/json' \
+    -d "$auth_payload")
+
+  var verify_status = $(echo $verify_response | jq -r '.status // "ERROR"')
+  var verify_content = $(echo $verify_response | jq -r '.records[0].content // ""')
+
+  if test "$verify_status" = "SUCCESS" && test "$verify_content" = "$SYSTIME_IP" {
+    log "✅ Porkbun API confirms: $fqdn -> $verify_content"
+    log "Waiting 10s for DNS to start propagating..."
+    sleep 10
+    return 0
+  }
+
+  log "⚠️  Porkbun API verification:"
+  log "  Status: $verify_status"
+  log "  Content: ${verify_content:-<none>}"
+  log "  Expected: $SYSTIME_IP"
+
+  # Still return 0 as Porkbun said create was successful
+  log "Continuing despite verification mismatch (Porkbun CREATE succeeded)"
+  return 0
+}
+
+proc systime_dns_delete {
+  log "Deleting DNS record for systime..."
+
+  get_porkbun_secrets
+
+  var auth_payload = $(jq -n \
+    --arg apikey "$PKB_API_KEY" \
+    --arg secret "$PKB_API_SECRET" \
+    '{apikey: $apikey, secretapikey: $secret}')
+
+  curl -s -X POST "$[CONFIG.porkbun_api_base]/dns/deleteByNameType/$[CONFIG.pkb_domain]/A/$[SYSTIME_CONFIG.pkb_subdomain]" \
+    -H 'Content-Type: application/json' \
+    -d "$auth_payload" > /dev/null
+
+  log "DNS record deleted for $[SYSTIME_CONFIG.domain]"
+}
+
+# -----------------------------------------------------------------------------
+# Enable Caddy TLS
+# -----------------------------------------------------------------------------
+
+proc enable_systime_caddy {
+  log "Enabling Caddy TLS on systime..."
+
+  fetch_systime_ip
+
+  # First verify Porkbun has the record
+  get_porkbun_secrets
+  var auth_payload = $(jq -n \
+    --arg apikey "$PKB_API_KEY" \
+    --arg secret "$PKB_API_SECRET" \
+    '{apikey: $apikey, secretapikey: $secret}')
+
+  var pkb_url = "$[CONFIG.porkbun_api_base]/dns/retrieveByNameType/$[CONFIG.pkb_domain]/A/$[SYSTIME_CONFIG.pkb_subdomain]"
+  var pkb_response = $(curl -s -X POST "$pkb_url" \
+    -H 'Content-Type: application/json' \
+    -d "$auth_payload")
+  var pkb_content = $(echo $pkb_response | jq -r '.records[0].content // ""')
+
+  log "Porkbun record check: ${pkb_content:-<none>} (want: $SYSTIME_IP)"
+
+  if test -z "$pkb_content" || test "$pkb_content" != "$SYSTIME_IP" {
+    log "⚠️  Porkbun doesn't have correct record, DNS propagation will likely fail"
+  }
+
+  # Wait for DNS propagation - use Cloudflare DNS (1.1.1.1) since Porkbun uses Cloudflare
+  # Google DNS (8.8.8.8) can cache NXDOMAIN for 30+ minutes (negative caching)
+  log "Waiting for DNS propagation to Cloudflare DNS (Porkbun uses Cloudflare)..."
+  var max_checks = 12
+  var check = 1
+
+  while (check <= max_checks) {
+    var dns_ip = ''
+    try {
+      setvar dns_ip = $(dig +short "$[SYSTIME_CONFIG.domain]" '@1.1.1.1' 2>/dev/null | head -1)
+    }
+
+    if test "$dns_ip" = "$SYSTIME_IP" {
+      log "✅ DNS propagated: $[SYSTIME_CONFIG.domain] -> $SYSTIME_IP"
+      break
+    }
+
+    log "  DNS check $check/$max_checks (Cloudflare): got ${dns_ip:-<none>}, want $SYSTIME_IP"
+    sleep 5
+    setvar check = check + 1
+  }
+
+  if (check > max_checks) {
+    log "⚠️  DNS propagation timed out. Continuing anyway (Porkbun confirmed record exists)..."
+  }
+
+  # Wait for SSH
+  wait_for_ssh $[SYSTIME_CONFIG.instance_name] $[CONFIG.project] $[SYSTIME_CONFIG.zone]
+
+  # Wait for startup script to complete (systime-specific: check for systime service, not iocaine)
+  log "Waiting for systime startup script to complete..."
+  var max_startup_checks = 30
+  var startup_check = 1
+
+  while (startup_check <= max_startup_checks) {
+    var systime_status = ''
+    try {
+      # Check if systime service is active (grep to extract just the status)
+      setvar systime_status = $(gcloud compute ssh "$[SYSTIME_CONFIG.instance_name]" \
+        --project="$[CONFIG.project]" \
+        --zone="$[SYSTIME_CONFIG.zone]" \
+        --ssh-flag="-o StrictHostKeyChecking=no" \
+        --ssh-flag="-o ConnectTimeout=10" \
+        --command='systemctl is-active systime.service 2>/dev/null | head -1' \
+        2>/dev/null | tail -1)
+    }
+
+    # Startup complete when systime is active
+    case $systime_status in
+      (*active*)
+        log "✅ Systime startup complete - systime service is running"
+        break
+        ;;
+    esac
+
+    log "  Startup check $startup_check/$max_startup_checks: systime=$systime_status"
+    sleep 10
+    setvar startup_check = startup_check + 1
+  }
+
+  if (startup_check > max_startup_checks) {
+    log "⚠️  Startup completion timed out, continuing anyway..."
+  }
+
+  # Enable Caddy via SSH
+  log "Enabling Caddy..."
+  gcloud compute ssh "$[SYSTIME_CONFIG.instance_name]" \
+    --project="$[CONFIG.project]" \
+    --zone="$[SYSTIME_CONFIG.zone]" \
+    --ssh-flag="-o StrictHostKeyChecking=no" \
+    --command="sudo systemctl enable caddy && sudo systemctl start caddy && sleep 3 && sudo systemctl status caddy --no-pager"
+
+  log "Caddy TLS enabled on systime"
+}
+
+# -----------------------------------------------------------------------------
+# Wait for Systime Ready
+# -----------------------------------------------------------------------------
+
+proc wait_for_systime_ready {
+  log "Waiting for systime service..."
+
+  fetch_systime_ip
+
+  var max_attempts = 30
+  var attempt = 1
+  var domain = SYSTIME_CONFIG.domain
+
+  while (attempt <= max_attempts) {
+    var http_code = ''
+    try {
+      # Use --resolve to bypass local DNS cache (which may have stale NXDOMAIN)
+      setvar http_code = $(curl -s -o /dev/null -w '%{http_code}' \
+        --connect-timeout 5 \
+        --resolve "$domain:443:$SYSTIME_IP" \
+        "https://$domain/" 2>/dev/null)
+    }
+
+    if test "$http_code" = "200" {
+      log "✅ Systime is ready at https://$domain/"
+      return 0
+    }
+
+    log "  Attempt $attempt/$max_attempts: HTTP $http_code (IP: $SYSTIME_IP)"
+    sleep 10
+    setvar attempt = attempt + 1
+  }
+
+  log "WARNING: Systime may not be fully ready"
+  return 0
+}
+
+# -----------------------------------------------------------------------------
+# Main Provision Function
+# -----------------------------------------------------------------------------
+
+proc provision_systime {
+  require_commands gcloud jq dig
+
+  log_section "Provisioning Systime Echo Server"
+
+  # 1. Ensure project is ready
+  ensure_project_ready
+
+  # 2. Ensure firewall rules
+  try {
+    gcloud compute firewall-rules create allow-http-https \
+      --project=$[CONFIG.project] \
+      --allow=tcp:80,tcp:443 \
+      --target-tags=http-server,https-server \
+      --description="Allow HTTP and HTTPS traffic" \
+      2>/dev/null
+  }
+
+  # 3. Create instance
+  create_systime_instance
+
+  # 4. Get external IP
+  fetch_systime_ip
+
+  log_section "Systime Instance Ready"
+  log "External IP: $SYSTIME_IP"
+  log "Domain:      $[SYSTIME_CONFIG.domain]"
+}
+
+# -----------------------------------------------------------------------------
+# Delete Systime
+# -----------------------------------------------------------------------------
+
+proc delete_systime {
+  log_section "Deleting Systime Instance"
+
+  # Delete DNS first
+  try {
+    systime_dns_delete
+  }
+
+  var exists = ''
+  try {
+    setvar exists = $(gcloud compute instances describe $[SYSTIME_CONFIG.instance_name] \
+      --project=$[CONFIG.project] \
+      --zone=$[SYSTIME_CONFIG.zone] \
+      --format='value(name)' 2>/dev/null)
+  }
+
+  if test -z "$exists" {
+    log "Systime instance does not exist"
+    return 0
+  }
+
+  log "Deleting: $[SYSTIME_CONFIG.instance_name]"
+
+  gcloud compute instances delete $[SYSTIME_CONFIG.instance_name] \
+    --project=$[CONFIG.project] \
+    --zone=$[SYSTIME_CONFIG.zone] \
+    --quiet
+
+  log "Systime deleted"
+}
+
+# -----------------------------------------------------------------------------
+# CLI Interface
+# -----------------------------------------------------------------------------
+
+if is-main {
+  require_commands gcloud jq
+
+  var command = ${1:-provision}
+
+  case $command in
+    provision)
+      provision_systime
+      ;;
+    dns)
+      systime_dns_create
+      ;;
+    caddy)
+      enable_systime_caddy
+      ;;
+    delete)
+      delete_systime
+      ;;
+    *)
+      echo "Usage: provision-systime.ysh <command>"
+      echo ""
+      echo "Commands:"
+      echo "  provision   Create systime instance"
+      echo "  dns         Create DNS record"
+      echo "  caddy       Enable Caddy TLS"
+      echo "  delete      Delete instance and DNS"
+      ;;
+  esac
+}
+

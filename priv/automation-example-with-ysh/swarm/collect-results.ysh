@@ -1,0 +1,354 @@
+#!/usr/bin/env ysh
+# =============================================================================
+# Load Test Results Collection
+# Pulls results from all swarm VMs and aggregates them
+# =============================================================================
+
+source-guard swarm/collect-results.ysh || return 0
+
+source $_this_dir/../lib/config.ysh
+source $_this_dir/provision-swarm.ysh
+
+# -----------------------------------------------------------------------------
+# Result Collection
+# -----------------------------------------------------------------------------
+
+proc collect_from_instance (instance_name, zone, local_dir) {
+  # Collect results from a single instance
+
+  log "Collecting from $instance_name ($zone)..."
+
+  var instance_dir = "$local_dir/$instance_name"
+  mkdir -p "$instance_dir"
+
+  # Get the latest results directory on the VM
+  var latest_results = ''
+  try {
+    setvar latest_results = $(gcloud compute ssh "$instance_name" \
+      --project=$[CONFIG.project] \
+      --zone="$zone" \
+      --command='ls -t /opt/loadtest/results/ 2>/dev/null | head -1' \
+      --ssh-flag="-o ConnectTimeout=10" \
+      --ssh-flag="-o StrictHostKeyChecking=no" \
+      2>/dev/null)
+  }
+
+  if test -z "$latest_results" {
+    log "  No results found on $instance_name"
+    return 1
+  }
+
+  log "  Latest results: $latest_results"
+
+  # Copy all files from the results directory
+  gcloud compute scp \
+    --project=$[CONFIG.project] \
+    --zone="$zone" \
+    --recurse \
+    "$instance_name:/opt/loadtest/results/$latest_results/*" \
+    "$instance_dir/" \
+    2>/dev/null
+
+  log "  Results saved to $instance_dir"
+}
+
+proc collect_all_results {
+  # Collect results from all swarm instances
+  log_section "Collecting Load Test Results"
+
+  var timestamp = $(date +%Y%m%d_%H%M%S)
+  var script_dir = $(dirname $0)
+  var results_dir = "$script_dir/results/$timestamp"
+
+  mkdir -p "$results_dir"
+  log "Results directory: $results_dir"
+  log ""
+
+  # Get instance list with zones (tab-separated)
+  var instance_data = $(gcloud compute instances list \
+    --project=$[CONFIG.project] \
+    --filter="name~'^$[SWARM_CONFIG.instance_prefix]-'" \
+    --format='value(name,zone)' 2>/dev/null)
+
+  if test -z "$instance_data" {
+    log "No swarm instances found"
+    return 1
+  }
+
+  var collected = 0
+  var tmp_instances = $(mktemp)
+  echo "$instance_data" > $tmp_instances
+
+  while read line {
+    if test -z "$line" {
+      continue
+    }
+
+    # Parse tab-separated name and zone
+    var instance = $(echo "$line" | cut -f1)
+    var zone = $(echo "$line" | cut -f2)
+
+    if test -z "$instance" || test -z "$zone" {
+      continue
+    }
+
+    log "Collecting from $instance ($zone)..."
+    try {
+      collect_from_instance "$instance" "$zone" "$results_dir"
+      setvar collected = collected + 1
+    }
+  } < $tmp_instances
+
+  rm -f $tmp_instances
+
+  log ""
+  log "Collected results from $collected instances"
+  log ""
+
+  # Aggregate results
+  aggregate_results "$results_dir"
+
+  setglobal RESULTS_DIR = "$results_dir"
+}
+
+# -----------------------------------------------------------------------------
+# Result Aggregation
+# -----------------------------------------------------------------------------
+
+proc aggregate_results (results_dir) {
+  # Aggregate results from all instances into a single summary
+  log "Aggregating results..."
+
+  var aggregate_file = "$results_dir/aggregate.json"
+
+  # Find all summary JSON files
+  var summaries = $(find "$results_dir" -name 'summary*.json' -type f 2>/dev/null)
+
+  if test -z "$summaries" {
+    log "No summary files found to aggregate"
+    return 1
+  }
+
+  # Create aggregated summary using jq
+  cat <<'JQ_SCRIPT' > /tmp/aggregate.jq
+# Aggregate multiple k6 summaries
+def sum_counters:
+  map(.values.count // 0) | add;
+
+def avg_rates:
+  map(.values.rate // 0) | if length > 0 then add / length else 0 end;
+
+def merge_durations:
+  {
+    min: (map(.values.min // 999999) | min),
+    max: (map(.values.max // 0) | max),
+    avg: (map(.values.avg // 0) | if length > 0 then add / length else 0 end),
+    med: (map(.values.med // 0) | if length > 0 then add / length else 0 end),
+    "p(90)": (map(.values["p(90)"] // 0) | if length > 0 then add / length else 0 end),
+    "p(95)": (map(.values["p(95)"] // 0) | if length > 0 then add / length else 0 end),
+    "p(99)": (map(.values["p(99)"] // 0) | if length > 0 then add / length else 0 end)
+  };
+
+{
+  aggregated_at: (now | todate),
+  instance_count: length,
+  metrics: {
+    http_reqs: {
+      total: [.[].metrics.http_reqs] | sum_counters,
+      rate: [.[].metrics.http_reqs] | avg_rates
+    },
+    http_req_duration: [.[].metrics.http_req_duration] | merge_durations,
+    thief_responses: [.[].metrics.thief_responses] | sum_counters,
+    garbage_responses: [.[].metrics.garbage_responses] | sum_counters,
+    human_responses: [.[].metrics.human_responses] | sum_counters,
+    bot_misclassified: [.[].metrics.bot_misclassified] | sum_counters,
+    garbage_misclassified: [.[].metrics.garbage_misclassified] | sum_counters,
+    human_misclassified: [.[].metrics.human_misclassified] | sum_counters,
+    bot_classification_accuracy: [.[].metrics.bot_classification_accuracy] | avg_rates,
+    garbage_classification_accuracy: [.[].metrics.garbage_classification_accuracy] | avg_rates,
+    human_classification_accuracy: [.[].metrics.human_classification_accuracy] | avg_rates,
+    bot_latency: [.[].metrics.bot_latency] | merge_durations,
+    garbage_latency: [.[].metrics.garbage_latency] | merge_durations,
+    human_latency: [.[].metrics.human_latency] | merge_durations
+  }
+}
+JQ_SCRIPT
+
+  # Combine all summaries and aggregate
+  var all_summaries = '['
+  var first = true
+
+  for summary_file in $summaries {
+    if test "$first" = false {
+      setvar all_summaries = "${all_summaries},"
+    }
+    var content = $(cat "$summary_file")
+    setvar all_summaries = "${all_summaries}${content}"
+    setvar first = false
+  }
+  setvar all_summaries = "${all_summaries}]"
+
+  echo "$all_summaries" | jq -f /tmp/aggregate.jq > "$aggregate_file"
+
+  log "Aggregate summary written to: $aggregate_file"
+
+  # Print summary
+  print_aggregate_summary "$aggregate_file"
+}
+
+proc print_aggregate_summary (aggregate_file) {
+  # Print a human-readable summary of aggregated results
+  log ""
+  log "╔══════════════════════════════════════════════════════════════════════════╗"
+  log "║                    AGGREGATED LOAD TEST RESULTS                          ║"
+  log "╠══════════════════════════════════════════════════════════════════════════╣"
+
+  var data = $(cat "$aggregate_file")
+
+  var instances = $(echo "$data" | jq -r '.instance_count')
+  log "║  Instances:                 $(printf '%8s' $instances)                              ║"
+
+  log "╠══════════════════════════════════════════════════════════════════════════╣"
+  log "║                         CLASSIFICATION TOTALS                            ║"
+  log "╠══════════════════════════════════════════════════════════════════════════╣"
+
+  var thief = $(echo "$data" | jq -r '.metrics.thief_responses')
+  var garbage = $(echo "$data" | jq -r '.metrics.garbage_responses')
+  var human = $(echo "$data" | jq -r '.metrics.human_responses')
+  var bot_miss = $(echo "$data" | jq -r '.metrics.bot_misclassified')
+  var garbage_miss = $(echo "$data" | jq -r '.metrics.garbage_misclassified')
+  var human_miss = $(echo "$data" | jq -r '.metrics.human_misclassified')
+
+  log "║  Thief (bots) correct:      $(printf '%8s' $thief)  |  missed: $(printf '%6s' $bot_miss)          ║"
+  log "║  Garbage (fake) correct:    $(printf '%8s' $garbage)  |  missed: $(printf '%6s' $garbage_miss)          ║"
+  log "║  Human (passed) correct:    $(printf '%8s' $human)  |  missed: $(printf '%6s' $human_miss)          ║"
+
+  log "╠══════════════════════════════════════════════════════════════════════════╣"
+  log "║                         ACCURACY RATES                                   ║"
+  log "╠══════════════════════════════════════════════════════════════════════════╣"
+
+  var bot_acc = $(echo "$data" | jq -r '.metrics.bot_classification_accuracy * 100 | floor')
+  var garbage_acc = $(echo "$data" | jq -r '.metrics.garbage_classification_accuracy * 100 | floor')
+  var human_acc = $(echo "$data" | jq -r '.metrics.human_classification_accuracy * 100 | floor')
+
+  log "║  Bot detection accuracy:    $(printf '%8s' $bot_acc)%                              ║"
+  log "║  Garbage detection accuracy:$(printf '%8s' $garbage_acc)%                              ║"
+  log "║  Human passthrough accuracy:$(printf '%8s' $human_acc)%                              ║"
+
+  log "╠══════════════════════════════════════════════════════════════════════════╣"
+  log "║                         PERFORMANCE TOTALS                               ║"
+  log "╠══════════════════════════════════════════════════════════════════════════╣"
+
+  var total_reqs = $(echo "$data" | jq -r '.metrics.http_reqs.total')
+  var total_rps = $(echo "$data" | jq -r '.metrics.http_reqs.rate | floor')
+  var p50 = $(echo "$data" | jq -r '.metrics.http_req_duration.med | floor')
+  var p95 = $(echo "$data" | jq -r '.metrics.http_req_duration["p(95)"] | floor')
+  var p99 = $(echo "$data" | jq -r '.metrics.http_req_duration["p(99)"] | floor')
+
+  log "║  Total requests:            $(printf '%8s' $total_reqs)                              ║"
+  log "║  Combined RPS:              $(printf '%8s' $total_rps)                              ║"
+  log "║  Latency p50:               $(printf '%8s' $p50)ms                            ║"
+  log "║  Latency p95:               $(printf '%8s' $p95)ms                            ║"
+  log "║  Latency p99:               $(printf '%8s' $p99)ms                            ║"
+
+  log "╚══════════════════════════════════════════════════════════════════════════╝"
+  log ""
+}
+
+# -----------------------------------------------------------------------------
+# Trigger Tests on Swarm
+# -----------------------------------------------------------------------------
+
+proc run_tests_on_swarm {
+  # Trigger load tests on all swarm instances
+  log_section "Running Load Tests on Swarm"
+
+  get_swarm_instances
+
+  if test -z "$SWARM_INSTANCES" {
+    log "No swarm instances found"
+    return 1
+  }
+
+  log "Starting tests on all instances..."
+  log ""
+
+  for instance in $SWARM_INSTANCES {
+    var zone = $(gcloud compute instances list \
+      --project=$[CONFIG.project] \
+      --filter="name=$instance" \
+      --format='value(zone)' 2>/dev/null | head -1)
+
+    if test -z "$zone" {
+      log "Could not find zone for $instance"
+      continue
+    }
+
+    log "Starting test on $instance..."
+
+    # Run test in background on the VM
+    gcloud compute ssh "$instance" \
+      --project=$[CONFIG.project] \
+      --zone="$zone" \
+      --command='nohup /opt/loadtest/run-test.sh > /tmp/loadtest.log 2>&1 &' \
+      --ssh-flag="-o ConnectTimeout=10" \
+      --ssh-flag="-o StrictHostKeyChecking=no" \
+      2>/dev/null
+  }
+
+  log ""
+  log "Tests started on all instances"
+  log "Waiting for tests to complete..."
+
+  # Wait for test duration plus buffer
+  var duration_sec = 70  # 60s test + 10s buffer
+  sleep $duration_sec
+
+  log "Tests should be complete. Collecting results..."
+  collect_all_results
+}
+
+# -----------------------------------------------------------------------------
+# CLI Interface
+# -----------------------------------------------------------------------------
+
+proc collect_main {
+  require_commands gcloud jq
+
+  var command = ${1:-collect}
+
+  case $command in
+    collect)
+      collect_all_results
+      ;;
+    run)
+      run_tests_on_swarm
+      ;;
+    aggregate)
+      var dir = ${2:-}
+      if test -z "$dir" {
+        echo "Usage: collect-results.ysh aggregate <results_dir>"
+        exit 1
+      }
+      aggregate_results "$dir"
+      ;;
+    *)
+      echo "Usage: collect-results.ysh <command>"
+      echo ""
+      echo "Commands:"
+      echo "  collect    Collect results from all swarm instances"
+      echo "  run        Run tests on swarm and collect results"
+      echo "  aggregate  Re-aggregate results from a directory"
+      ;;
+  esac
+}
+
+# -----------------------------------------------------------------------------
+# Entry Point
+# -----------------------------------------------------------------------------
+
+if is-main {
+  collect_main @ARGV
+}
+
+

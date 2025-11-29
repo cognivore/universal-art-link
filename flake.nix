@@ -63,6 +63,9 @@
               grafana-loki
               ansible
               terraform
+              oils-for-unix  # YSH shell for deployment scripts
+              hcloud         # Hetzner Cloud CLI
+              dig            # DNS lookups
             ]
             ++ lib.optional (lib.hasAttr system passveil.packages) passveil.packages.${system}.passveil
             ++ lib.optionals stdenv.isLinux [

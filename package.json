@@ -22,7 +22,9 @@
     "test:e2e:legacy": "node --test tests/e2e/admin-panel.test.js",
     "test:e2e:shadcn": "node --test tests/e2e/shadcn-admin.test.js",
     "test:e2e:blog": "node --test tests/e2e/blog-cms.test.js",
-    "test:all": "pnpm test && pnpm test:e2e"
+    "test:e2e:staging": "node --test tests/e2e/staging-stripe.test.js",
+    "test:all": "pnpm test && pnpm test:e2e",
+    "staging:jwt": "tsx src/lib/stagingAuth.ts"
   },
   "keywords": [
     "static-site-generator",
@@ -41,6 +43,7 @@
     "fs-extra": "^11.2.0",
     "handlebars": "^4.7.8",
     "kleur": "^4.1.5",
+    "stripe": "^17.7.0",
     "yaml": "^2.6.0",
     "zod": "^3.23.8"
   },

@@ -1,0 +1,146 @@
+#!/usr/bin/env ysh
+# =============================================================================
+# Iocaine GCE Instance Provisioning
+# Creates a GCE instance with iocaine for distributed load testing
+# =============================================================================
+
+source-guard provision.ysh || return 0
+
+source $_this_dir/lib/config.ysh
+
+# -----------------------------------------------------------------------------
+# Firewall Setup (idempotent)
+# -----------------------------------------------------------------------------
+
+proc ensure_firewall {
+  log "Ensuring firewall rules exist..."
+
+  # Idempotent - succeeds even if rule already exists
+  try {
+    gcloud compute firewall-rules create allow-http-https \
+      --project=$[CONFIG.project] \
+      --allow=tcp:80,tcp:443 \
+      --target-tags=http-server,https-server \
+      --description="Allow HTTP and HTTPS traffic" \
+      2>/dev/null
+  }
+
+  log "Firewall rules configured"
+}
+
+# -----------------------------------------------------------------------------
+# Startup Script Preparation
+# -----------------------------------------------------------------------------
+
+proc prepare_startup_script {
+  # Substitute placeholders in startup.sh
+  var template = "$_this_dir/startup.sh"
+  var tmp_file = $(mktemp)
+
+  # Fetch GitHub token for private repo access
+  get_github_token
+
+  # Build authenticated repo URL: https://<token>@github.com/owner/repo.git
+  var auth_repo_url = $(echo "$[CONFIG.repo_url]" | sed "s|https://|https://${GITHUB_TOKEN}@|")
+
+  # Substitute all placeholders
+  sed -e "s|@@DOMAIN@@|$[CONFIG.domain]|g" \
+      -e "s|@@REPO_URL@@|${auth_repo_url}|g" \
+      -e "s|@@REPO_BRANCH@@|$[CONFIG.repo_branch]|g" \
+      -e "s|@@IOCAINE_PORT@@|$[CONFIG.iocaine_port]|g" \
+      $template > $tmp_file
+
+  # Set global for caller to use
+  setglobal STARTUP_SCRIPT_PATH = "$tmp_file"
+}
+
+# -----------------------------------------------------------------------------
+# Instance Creation
+# -----------------------------------------------------------------------------
+
+proc create_instance {
+  log_section "Creating GCE Instance"
+
+  log "Instance: $[CONFIG.instance_name]"
+  log "Project:  $[CONFIG.project]"
+  log "Zone:     $[CONFIG.zone]"
+
+  # Check if instance already exists (idempotent)
+  var exists = ''
+  try {
+    setvar exists = $(gcloud compute instances describe $[CONFIG.instance_name] \
+      --project=$[CONFIG.project] \
+      --zone=$[CONFIG.zone] \
+      --format='value(name)' 2>/dev/null)
+  }
+
+  if test -n "$exists" {
+    log "Instance $[CONFIG.instance_name] already exists"
+    return
+  }
+
+  prepare_startup_script
+
+  # Trap to clean up temp file
+  trap "rm -f $STARTUP_SCRIPT_PATH" EXIT
+
+  log "Machine:  $[CONFIG.machine_type]"
+
+  gcloud compute instances create $[CONFIG.instance_name] \
+    --project=$[CONFIG.project] \
+    --zone=$[CONFIG.zone] \
+    --machine-type=$[CONFIG.machine_type] \
+    --image-family=ubuntu-2404-lts-amd64 \
+    --image-project=ubuntu-os-cloud \
+    --boot-disk-size=$[CONFIG.boot_disk_size] \
+    --tags=http-server,https-server \
+    --metadata-from-file=startup-script=$STARTUP_SCRIPT_PATH
+
+  log "Instance created successfully"
+}
+
+# -----------------------------------------------------------------------------
+# Get External IP
+# -----------------------------------------------------------------------------
+
+proc fetch_external_ip {
+  setglobal INSTANCE_IP = $(gcloud compute instances describe $[CONFIG.instance_name] \
+    --project=$[CONFIG.project] \
+    --zone=$[CONFIG.zone] \
+    --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
+}
+
+# -----------------------------------------------------------------------------
+# Main Provision Function
+# Sets INSTANCE_IP global variable with the external IP
+# -----------------------------------------------------------------------------
+
+proc provision {
+  require_commands gcloud jq
+
+  log_section "Provisioning Iocaine Instance"
+
+  # 1. Ensure project exists, has billing, and APIs enabled
+  ensure_project_ready
+
+  # 2. Ensure firewall rules
+  ensure_firewall
+
+  # 3. Create instance
+  create_instance
+
+  # 4. Get external IP (sets INSTANCE_IP global)
+  fetch_external_ip
+
+  log_section "Instance Ready"
+  log "External IP: $INSTANCE_IP"
+  log "Domain:      $[CONFIG.domain]"
+}
+
+# -----------------------------------------------------------------------------
+# Run if executed directly
+# -----------------------------------------------------------------------------
+
+if is-main {
+  provision
+}

@@ -1,0 +1,306 @@
+#!/usr/bin/env ysh
+# =============================================================================
+# AWS Certificate Manager (ACM) for CloudFront Custom Domains
+# Handles certificate provisioning with DNS validation via Porkbun
+# =============================================================================
+
+source-guard aws/acm.ysh || return 0
+
+source $_this_dir/../lib/config.ysh
+source $_this_dir/../lib/aws-config.ysh
+source $_this_dir/../dns.ysh
+
+# -----------------------------------------------------------------------------
+# Certificate Lookup
+# -----------------------------------------------------------------------------
+
+proc get_certificate_arn (domain) {
+  # Find existing certificate by domain name
+  # Returns: sets ACM_CERTIFICATE_ARN in caller scope
+
+  log "Looking for ACM certificate for domain: $domain"
+
+  var cert_arn = ''
+  try {
+    # Look for issued certificates matching domain
+    setvar cert_arn = $(aws acm list-certificates \
+      --certificate-statuses ISSUED \
+      --query "CertificateSummaryList[?DomainName=='$domain'].CertificateArn | [0]" \
+      --output text 2>/dev/null)
+  }
+
+  if test -n "$cert_arn" && test "$cert_arn" != "None" && test "$cert_arn" != "null" {
+    setglobal ACM_CERTIFICATE_ARN = "$cert_arn"
+    log "Found existing certificate: $cert_arn"
+    return 0
+  }
+
+  # Also check pending validation certificates
+  try {
+    setvar cert_arn = $(aws acm list-certificates \
+      --certificate-statuses PENDING_VALIDATION \
+      --query "CertificateSummaryList[?DomainName=='$domain'].CertificateArn | [0]" \
+      --output text 2>/dev/null)
+  }
+
+  if test -n "$cert_arn" && test "$cert_arn" != "None" && test "$cert_arn" != "null" {
+    setglobal ACM_CERTIFICATE_ARN = "$cert_arn"
+    log "Found pending certificate: $cert_arn"
+    return 0
+  }
+
+  setglobal ACM_CERTIFICATE_ARN = ""
+  log "No existing certificate found"
+  return 1
+}
+
+# -----------------------------------------------------------------------------
+# Certificate Creation
+# -----------------------------------------------------------------------------
+
+proc create_acm_certificate (domain) {
+  # Request a new ACM certificate with DNS validation
+  # Returns: sets ACM_CERTIFICATE_ARN in caller scope
+
+  log_section "Requesting ACM Certificate"
+  log "Domain: $domain"
+
+  # Check if certificate already exists (ignore return code)
+  try {
+    get_certificate_arn "$domain"
+  }
+  if test -n "$ACM_CERTIFICATE_ARN" {
+    log "Certificate already exists, skipping creation"
+    return 0
+  }
+
+  log "Creating new certificate..."
+
+  var result = $(aws acm request-certificate \
+    --domain-name "$domain" \
+    --validation-method DNS \
+    --output json)
+
+  json read (&result_dict) <<< $result
+  var cert_arn = result_dict.CertificateArn
+
+  if test -z "$cert_arn" {
+    log "ERROR: Failed to create certificate"
+    return 1
+  }
+
+  setglobal ACM_CERTIFICATE_ARN = "$cert_arn"
+  log "Certificate requested: $cert_arn"
+
+  # Wait a moment for validation options to be generated
+  log "Waiting for DNS validation options..."
+  sleep 5
+}
+
+proc get_dns_validation_record (cert_arn) {
+  # Get DNS validation record details from certificate
+  # Returns: sets ACM_VALIDATION_NAME and ACM_VALIDATION_VALUE in caller scope
+
+  log "Getting DNS validation record for certificate..."
+
+  var attempts = 0
+  var max_attempts = 12
+
+  while (attempts < max_attempts) {
+    var cert_info = $(aws acm describe-certificate \
+      --certificate-arn "$cert_arn" \
+      --output json)
+
+    json read (&cert_dict) <<< $cert_info
+
+    # Check if DomainValidationOptions exists and has records
+    var validation_opts = ''
+    try {
+      setvar validation_opts = $(echo "$cert_info" | jq -r '.Certificate.DomainValidationOptions[0].ResourceRecord // empty')
+    }
+
+    if test -n "$validation_opts" {
+      var name = $(echo "$cert_info" | jq -r '.Certificate.DomainValidationOptions[0].ResourceRecord.Name')
+      var value = $(echo "$cert_info" | jq -r '.Certificate.DomainValidationOptions[0].ResourceRecord.Value')
+
+      if test -n "$name" && test "$name" != "null" {
+        setglobal ACM_VALIDATION_NAME = "$name"
+        setglobal ACM_VALIDATION_VALUE = "$value"
+        log "Validation record: $name -> $value"
+        return 0
+      }
+    }
+
+    setvar attempts = attempts + 1
+    log "Validation options not ready yet (attempt $attempts/$max_attempts)..."
+    sleep 5
+  }
+
+  log "ERROR: Timeout waiting for validation options"
+  return 1
+}
+
+proc add_dns_validation_record {
+  # Add DNS validation CNAME record to Porkbun
+  # Uses ACM_VALIDATION_NAME and ACM_VALIDATION_VALUE from get_dns_validation_record
+
+  log "Adding DNS validation record to Porkbun..."
+
+  # Extract subdomain from full validation name
+  # ACM gives us something like: _abc123.cdn.melira.fere.me.
+  # We need to strip trailing dot and extract relative to pkb_domain
+
+  var full_name = "$ACM_VALIDATION_NAME"
+  # Remove trailing dot if present
+  var name_clean = $(echo "$full_name" | sed 's/\.$//')
+
+  # The subdomain relative to fere.me
+  var pkb_domain = CONFIG.pkb_domain
+  # Use single quotes to avoid YSH escape issues, concatenate variable
+  var subdomain = $(echo "$name_clean" | sed 's/\.'$pkb_domain'$//')
+
+  log "Creating CNAME: $subdomain.$pkb_domain -> $ACM_VALIDATION_VALUE"
+
+  get_porkbun_secrets
+
+  var payload = $(jq -n \
+    --arg apikey "$PKB_API_KEY" \
+    --arg secret "$PKB_API_SECRET" \
+    --arg name "$subdomain" \
+    --arg content "$ACM_VALIDATION_VALUE" \
+    '{
+      apikey: $apikey,
+      secretapikey: $secret,
+      name: $name,
+      type: "CNAME",
+      content: $content,
+      ttl: "600"
+    }')
+
+  var response = $(porkbun_request "/dns/create/$pkb_domain" "$payload")
+  var status = $(echo $response | jq -r '.status // "ERROR"')
+
+  if test "$status" = "SUCCESS" {
+    log "DNS validation record created"
+  } else {
+    # Record might already exist
+    var message = $(echo $response | jq -r '.message // "Unknown error"')
+    log "Note: $message (may already exist)"
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Certificate Validation
+# -----------------------------------------------------------------------------
+
+proc wait_for_certificate_validation (cert_arn; max_attempts=60, interval=10) {
+  # Wait for certificate to be issued after DNS validation
+  log_section "Waiting for Certificate Validation"
+  log "This typically takes 2-5 minutes..."
+
+  var attempt = 1
+
+  while (attempt <= max_attempts) {
+    var status = $(aws acm describe-certificate \
+      --certificate-arn "$cert_arn" \
+      --query 'Certificate.Status' \
+      --output text 2>/dev/null)
+
+    case $status in
+      (ISSUED)
+        log "Certificate issued successfully!"
+        return 0
+        ;;
+      (PENDING_VALIDATION)
+        log "Status: $status (attempt $attempt/$max_attempts, waiting ${interval}s...)"
+        ;;
+      (FAILED|REVOKED|EXPIRED)
+        log "ERROR: Certificate status: $status"
+        return 1
+        ;;
+      (*)
+        log "Status: $status (attempt $attempt/$max_attempts)"
+        ;;
+    esac
+
+    sleep $interval
+    setvar attempt = attempt + 1
+  }
+
+  var timeout_mins = max_attempts * interval / 60
+  log "ERROR: Certificate validation timeout after $timeout_mins minutes"
+  return 1
+}
+
+# -----------------------------------------------------------------------------
+# Certificate Deletion
+# -----------------------------------------------------------------------------
+
+proc delete_acm_certificate (domain) {
+  # Delete ACM certificate for domain
+  log_section "Deleting ACM Certificate"
+  log "Domain: $domain"
+
+  # Find the certificate (ignore return code - may not exist)
+  try {
+    get_certificate_arn "$domain"
+  }
+
+  if test -z "$ACM_CERTIFICATE_ARN" {
+    log "No certificate found for $domain"
+    return 0
+  }
+
+  log "Deleting certificate: $ACM_CERTIFICATE_ARN"
+
+  try {
+    aws acm delete-certificate --certificate-arn "$ACM_CERTIFICATE_ARN"
+    log "Certificate deleted"
+  }
+
+  # Also clean up the validation DNS record if it exists
+  # This is best-effort since the record name isn't stored
+  log "Note: DNS validation records may need manual cleanup"
+}
+
+# -----------------------------------------------------------------------------
+# High-Level Provisioning
+# -----------------------------------------------------------------------------
+
+proc provision_certificate (domain) {
+  # Full certificate provisioning flow:
+  # 1. Request certificate
+  # 2. Add DNS validation record
+  # 3. Wait for validation
+  # Returns: sets ACM_CERTIFICATE_ARN
+
+  log_section "Provisioning ACM Certificate"
+  log "Domain: $domain"
+
+  # Step 1: Request certificate (or find existing)
+  create_acm_certificate "$domain"
+
+  if test -z "$ACM_CERTIFICATE_ARN" {
+    log "ERROR: No certificate ARN available"
+    return 1
+  }
+
+  # Check if already issued
+  var status = $(aws acm describe-certificate \
+    --certificate-arn "$ACM_CERTIFICATE_ARN" \
+    --query 'Certificate.Status' \
+    --output text 2>/dev/null)
+
+  if test "$status" = "ISSUED" {
+    log "Certificate already issued, skipping validation"
+    return 0
+  }
+
+  # Step 2: Get and add DNS validation record
+  get_dns_validation_record "$ACM_CERTIFICATE_ARN"
+  add_dns_validation_record
+
+  # Step 3: Wait for validation
+  wait_for_certificate_validation "$ACM_CERTIFICATE_ARN"
+}
+

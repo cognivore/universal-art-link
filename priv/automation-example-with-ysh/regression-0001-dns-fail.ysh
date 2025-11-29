@@ -1,0 +1,239 @@
+#!/usr/bin/env ysh
+# =============================================================================
+# Regression Test: DNS Update Failure Investigation
+#
+# Issue: Porkbun API returns "We were unable to edit the DNS record."
+# Root Cause: Porkbun allows duplicate A records, causing editByNameType to fail
+#
+# Usage:
+#   ./regression-0001-dns-fail.ysh reproduce   # Reproduce the exact bug
+#   ./regression-0001-dns-fail.ysh fix-test    # Test the fix
+#   ./regression-0001-dns-fail.ysh cleanup     # Clean up test records
+# =============================================================================
+
+source $_this_dir/lib/config.ysh
+
+# Test configuration - uses documentation IPs (RFC 5737)
+const TEST_CONFIG = {
+  pkb_domain: 'fere.me',
+  pkb_subdomain: 'dnstest',
+  porkbun_api_base: 'https://api.porkbun.com/api/json/v3',
+}
+
+const TEST_IPS = ['192.0.2.1', '192.0.2.2', '198.51.100.1']
+
+# -----------------------------------------------------------------------------
+# API Helpers
+# -----------------------------------------------------------------------------
+
+proc api_call (endpoint, payload) {
+  curl -sS -X POST "$[TEST_CONFIG.porkbun_api_base]$endpoint" \
+    -H 'Content-Type: application/json' \
+    -d "$payload"
+}
+
+proc auth_payload {
+  get_porkbun_secrets
+  jq -n \
+    --arg apikey "$PKB_API_KEY" \
+    --arg secret "$PKB_API_SECRET" \
+    '{apikey: $apikey, secretapikey: $secret}'
+}
+
+proc create_payload (ip) {
+  get_porkbun_secrets
+  jq -n \
+    --arg apikey "$PKB_API_KEY" \
+    --arg secret "$PKB_API_SECRET" \
+    --arg name "$[TEST_CONFIG.pkb_subdomain]" \
+    --arg content "$ip" \
+    '{apikey: $apikey, secretapikey: $secret, name: $name, type: "A", content: $content, ttl: "5"}'
+}
+
+proc update_payload (ip) {
+  get_porkbun_secrets
+  jq -n \
+    --arg apikey "$PKB_API_KEY" \
+    --arg secret "$PKB_API_SECRET" \
+    --arg content "$ip" \
+    '{apikey: $apikey, secretapikey: $secret, content: $content, ttl: "5"}'
+}
+
+# -----------------------------------------------------------------------------
+# Test: Reproduce the Bug
+# -----------------------------------------------------------------------------
+
+proc test_reproduce_bug {
+  log_section "Reproducing Bug: editByNameType fails with duplicate records"
+
+  echo ""
+  echo "Step 1: Clean slate - delete any existing records"
+  var auth = $(auth_payload)
+  api_call "/dns/deleteByNameType/$[TEST_CONFIG.pkb_domain]/A/$[TEST_CONFIG.pkb_subdomain]" "$auth"
+  echo "  ✓ Deleted"
+  echo ""
+
+  echo "Step 2: Create first A record (IP: $[TEST_IPS[0]])"
+  var payload1 = $(create_payload $[TEST_IPS[0]])
+  var resp1 = $(api_call "/dns/create/$[TEST_CONFIG.pkb_domain]" "$payload1")
+  echo "  Response: $(echo $resp1 | jq -c .)"
+  echo ""
+
+  echo "Step 3: Create SECOND A record with different IP ($[TEST_IPS[1]])"
+  echo "  (This is what causes the bug - Porkbun allows duplicates!)"
+  var payload2 = $(create_payload $[TEST_IPS[1]])
+  var resp2 = $(api_call "/dns/create/$[TEST_CONFIG.pkb_domain]" "$payload2")
+  echo "  Response: $(echo $resp2 | jq -c .)"
+  echo ""
+
+  echo "Step 4: Verify we now have duplicate records"
+  var check = $(api_call "/dns/retrieveByNameType/$[TEST_CONFIG.pkb_domain]/A/$[TEST_CONFIG.pkb_subdomain]" "$auth")
+  var count = $(echo $check | jq '.records | length')
+  echo "  Record count: $count"
+  echo "  Records:"
+  echo $check | jq '.records[] | "    - \(.content)"'
+  echo ""
+
+  echo "Step 5: Attempt editByNameType (THIS SHOULD FAIL)"
+  var update = $(update_payload $[TEST_IPS[2]])
+  var resp3 = $(api_call "/dns/editByNameType/$[TEST_CONFIG.pkb_domain]/A/$[TEST_CONFIG.pkb_subdomain]" "$update")
+  var status = $(echo $resp3 | jq -r '.status')
+  var message = $(echo $resp3 | jq -r '.message // "none"')
+  echo ""
+
+  if test "$status" = "ERROR" {
+    echo "╔══════════════════════════════════════════════════════════════════════════╗"
+    echo "║                      ✓ BUG SUCCESSFULLY REPRODUCED                       ║"
+    echo "╠══════════════════════════════════════════════════════════════════════════╣"
+    echo "║ editByNameType fails when there are duplicate A records.                 ║"
+    echo "║ Error: $message"
+    echo "╚══════════════════════════════════════════════════════════════════════════╝"
+  } else {
+    echo "⚠️  Unexpected: editByNameType succeeded (status: $status)"
+    echo "  Response: $(echo $resp3 | jq -c .)"
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Test: Verify the Fix (delete-then-create pattern)
+# -----------------------------------------------------------------------------
+
+proc test_fix {
+  log_section "Testing Fix: delete-then-create pattern"
+
+  echo ""
+  echo "This simulates the FIXED dns_create behavior:"
+  echo ""
+
+  # Step 1: Create initial state with duplicates
+  echo "Setup: Creating duplicate records to simulate bug state..."
+  var auth = $(auth_payload)
+  api_call "/dns/deleteByNameType/$[TEST_CONFIG.pkb_domain]/A/$[TEST_CONFIG.pkb_subdomain]" "$auth"
+  var p1 = $(create_payload $[TEST_IPS[0]])
+  var p2 = $(create_payload $[TEST_IPS[1]])
+  api_call "/dns/create/$[TEST_CONFIG.pkb_domain]" "$p1"
+  api_call "/dns/create/$[TEST_CONFIG.pkb_domain]" "$p2"
+
+  var check1 = $(api_call "/dns/retrieveByNameType/$[TEST_CONFIG.pkb_domain]/A/$[TEST_CONFIG.pkb_subdomain]" "$auth")
+  echo "  Before fix: $(echo $check1 | jq '.records | length') records"
+  echo ""
+
+  # Step 2: Apply the fix (delete-then-create)
+  echo "Applying fix: DELETE all records first, then CREATE single record"
+  echo ""
+
+  echo "  1. deleteByNameType..."
+  var del = $(api_call "/dns/deleteByNameType/$[TEST_CONFIG.pkb_domain]/A/$[TEST_CONFIG.pkb_subdomain]" "$auth")
+  echo "     $(echo $del | jq -c .)"
+
+  echo "  2. create with new IP ($[TEST_IPS[2]])..."
+  var p3 = $(create_payload $[TEST_IPS[2]])
+  var create = $(api_call "/dns/create/$[TEST_CONFIG.pkb_domain]" "$p3")
+  echo "     $(echo $create | jq -c .)"
+  echo ""
+
+  # Step 3: Verify fix worked
+  var check2 = $(api_call "/dns/retrieveByNameType/$[TEST_CONFIG.pkb_domain]/A/$[TEST_CONFIG.pkb_subdomain]" "$auth")
+  var count = $(echo $check2 | jq '.records | length')
+  var content = $(echo $check2 | jq -r '.records[0].content // "NONE"')
+
+  echo "After fix:"
+  echo "  Record count: $count (should be 1)"
+  echo "  Content: $content (should be $[TEST_IPS[2]])"
+  echo ""
+
+  if test "$count" = "1" && test "$content" = "$[TEST_IPS[2]]" {
+    echo "╔══════════════════════════════════════════════════════════════════════════╗"
+    echo "║                         ✓ FIX VERIFIED                                   ║"
+    echo "╠══════════════════════════════════════════════════════════════════════════╣"
+    echo "║ delete-then-create pattern works correctly.                              ║"
+    echo "║ No duplicates, correct IP, editByNameType would work on next update.     ║"
+    echo "╚══════════════════════════════════════════════════════════════════════════╝"
+  } else {
+    echo "⚠️  Fix verification failed"
+    echo "  Expected: 1 record with $[TEST_IPS[2]]"
+    echo "  Got: $count records with $content"
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Cleanup
+# -----------------------------------------------------------------------------
+
+proc cleanup {
+  log_section "Cleaning up test records"
+
+  var auth = $(auth_payload)
+  echo "Deleting $[TEST_CONFIG.pkb_subdomain].$[TEST_CONFIG.pkb_domain]..."
+  var resp = $(api_call "/dns/deleteByNameType/$[TEST_CONFIG.pkb_domain]/A/$[TEST_CONFIG.pkb_subdomain]" "$auth")
+  echo "Response: $(echo $resp | jq -c .)"
+  echo ""
+  echo "Cleanup complete."
+}
+
+# -----------------------------------------------------------------------------
+# Main
+# -----------------------------------------------------------------------------
+
+proc main {
+  var cmd = ${1:-help}
+
+  case $cmd in
+    reproduce)
+      test_reproduce_bug
+      ;;
+    fix-test)
+      test_fix
+      ;;
+    cleanup)
+      cleanup
+      ;;
+    all)
+      test_reproduce_bug
+      echo ""
+      test_fix
+      echo ""
+      cleanup
+      ;;
+    *)
+      echo "Porkbun DNS API Regression Test"
+      echo ""
+      echo "This test suite demonstrates the bug where editByNameType fails"
+      echo "when duplicate A records exist (Porkbun allows creating duplicates)."
+      echo ""
+      echo "Usage: $0 <command>"
+      echo ""
+      echo "Commands:"
+      echo "  reproduce   Reproduce the bug by creating duplicate records"
+      echo "  fix-test    Test the delete-then-create fix"
+      echo "  cleanup     Remove test records"
+      echo "  all         Run all tests in sequence"
+      echo ""
+      echo "See: docs/bug-report-dns-update-failure.md for full analysis"
+      ;;
+  esac
+}
+
+if is-main {
+  main @ARGV
+}

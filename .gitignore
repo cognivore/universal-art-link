@@ -20,6 +20,9 @@ dist/
 Thumbs.db
 
 # Secrets
+.env
+.env.local
+.env.*.local
 *credentials.yaml
 **/conf/deployment.rs
 priv/aws/credentials

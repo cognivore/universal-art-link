@@ -1,0 +1,134 @@
+#!/usr/bin/env ysh
+# =============================================================================
+# Load Test Swarm Teardown
+# Deletes all load generator VMs
+# =============================================================================
+
+# Source guard removed - called only from destroy.ysh which already loads config
+# source lib/config.ysh already loaded by destroy.ysh
+
+# -----------------------------------------------------------------------------
+# Swarm Deletion
+# -----------------------------------------------------------------------------
+
+proc get_swarm_instances_for_destroy {
+  # List all load generator instances
+  var prefix = SWARM_CONFIG.instance_prefix
+
+  var instances = $(gcloud compute instances list \
+    --project=$[CONFIG.project] \
+    --filter="name~'^$prefix-'" \
+    --format='value(name,zone)' 2>/dev/null)
+
+  setglobal SWARM_INSTANCES_WITH_ZONES = "$instances"
+}
+
+proc delete_swarm_instance (instance_name, zone) {
+  # Delete a single swarm instance
+  log "Deleting instance $instance_name in $zone..."
+
+  gcloud compute instances delete "$instance_name" \
+    --project=$[CONFIG.project] \
+    --zone="$zone" \
+    --quiet
+
+  log "Instance $instance_name deleted"
+}
+
+proc destroy_swarm {
+  # Delete all load test swarm instances
+  log_section "Destroying Load Test Swarm"
+
+  get_swarm_instances_for_destroy
+
+  if test -z "$SWARM_INSTANCES_WITH_ZONES" {
+    log "No swarm instances found"
+    return 0
+  }
+
+  # Count instances
+  var count = $(echo "$SWARM_INSTANCES_WITH_ZONES" | wc -l | tr -d ' ')
+  log "Found $count swarm instance(s) to delete"
+  log ""
+
+  # Interactive confirmation unless AUTO_CONFIRM is set
+  if test "${AUTO_CONFIRM:-}" != "yes" {
+    echo -n "Are you sure you want to delete all swarm instances? Type 'yes' to confirm: "
+    read confirm
+
+    if test "$confirm" != "yes" {
+      log "Aborted."
+      return 0
+    }
+  }
+
+  # Delete each instance
+  echo "$SWARM_INSTANCES_WITH_ZONES" | while read line {
+    if test -z "$line" {
+      continue
+    }
+
+    var instance_name = $(echo "$line" | awk '{print $1}')
+    var zone = $(echo "$line" | awk '{print $2}')
+
+    if test -n "$instance_name" && test -n "$zone" {
+      delete_swarm_instance "$instance_name" "$zone"
+    }
+  }
+
+  log ""
+  log "All swarm instances deleted"
+}
+
+proc list_swarm_for_destroy {
+  # List swarm instances that would be deleted
+  log_section "Load Test Swarm Instances"
+
+  get_swarm_instances_for_destroy
+
+  if test -z "$SWARM_INSTANCES_WITH_ZONES" {
+    log "No swarm instances found"
+    return 0
+  }
+
+  gcloud compute instances list \
+    --project=$[CONFIG.project] \
+    --filter="name~'^$[SWARM_CONFIG.instance_prefix]-'" \
+    --format='table(name,zone,status,networkInterfaces[0].accessConfigs[0].natIP)'
+}
+
+# -----------------------------------------------------------------------------
+# CLI Interface
+# -----------------------------------------------------------------------------
+
+proc destroy_swarm_main {
+  require_commands gcloud
+
+  var command = ${1:-destroy}
+
+  case $command in
+    destroy)
+      destroy_swarm
+      ;;
+    list)
+      list_swarm_for_destroy
+      ;;
+    *)
+      echo "Usage: destroy-swarm.ysh <command>"
+      echo ""
+      echo "Commands:"
+      echo "  destroy  Delete all swarm instances"
+      echo "  list     List swarm instances"
+      ;;
+  esac
+}
+
+# -----------------------------------------------------------------------------
+# Entry Point
+# -----------------------------------------------------------------------------
+
+if is-main {
+  destroy_swarm_main @ARGV
+}
+
+

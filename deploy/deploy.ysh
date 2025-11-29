@@ -1,0 +1,314 @@
+#!/usr/bin/env ysh
+# =============================================================================
+# UAL Deployment Orchestrator
+# One-command deployment of UAL to Hetzner with staging + production
+# =============================================================================
+
+source $_this_dir/lib/config.ysh
+source $_this_dir/lib/hetzner.ysh
+source $_this_dir/provision.ysh
+source $_this_dir/dns.ysh
+source $_this_dir/caddy.ysh
+source $_this_dir/install-ual.ysh
+
+# -----------------------------------------------------------------------------
+# Pre-flight Checks
+# -----------------------------------------------------------------------------
+
+proc preflight {
+  log_section "Pre-flight Checks"
+
+  require_commands curl jq ssh scp dig node pnpm openssl
+
+  # Check for required environment variables
+  log "Checking environment variables..."
+
+  require_env HETZNER_API_TOKEN
+  require_env PORKBUN_API_KEY
+  require_env PORKBUN_API_SECRET
+
+  # Check Stripe keys (at least test keys for staging)
+  if test -z "${STRIPE_SECRET_KEY_TEST:-}" {
+    log_warning "STRIPE_SECRET_KEY_TEST not set - staging Stripe checkout won't work"
+  }
+
+  if test -z "${STRIPE_SECRET_KEY:-}" {
+    log_warning "STRIPE_SECRET_KEY not set - production Stripe checkout won't work"
+  }
+
+  log_success "Pre-flight checks passed"
+}
+
+# -----------------------------------------------------------------------------
+# E2E Tests
+# -----------------------------------------------------------------------------
+
+proc run_e2e_tests {
+  log "Running E2E tests against staging..."
+  log "Target: https://$STAGING_DOMAIN"
+  log "Using staging bypass JWT (is_santa=true) 🎅"
+  log ""
+
+  # Verify staging JWT is set
+  if test -z "${UAL_STAGING_JWT:-}" {
+    log_error "UAL_STAGING_JWT not set - cannot run E2E tests"
+    log "Generate it with: pnpm staging:jwt"
+    return 1
+  }
+
+  # Wait a moment for services to fully start
+  log "Waiting 10s for services to stabilize..."
+  sleep 10
+
+  # Run the E2E test suite
+  cd "$_this_dir/.."
+
+  var test_result = 0
+  try {
+    UAL_STAGING_URL="https://$STAGING_DOMAIN" UAL_STAGING_JWT="$UAL_STAGING_JWT" pnpm test:e2e:staging
+  }
+  setvar test_result = $?
+
+  if (test_result === 0) {
+    log_success "All E2E tests passed! 🎉"
+  } else {
+    log_error "Some E2E tests failed"
+    return 1
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Full Deployment
+# -----------------------------------------------------------------------------
+
+proc deploy_full {
+  var start_time = $(date +%s)
+
+  log_section "UAL Full Deployment"
+  log ""
+  log "This will deploy:"
+  log "  1. Hetzner CX22 server"
+  log "  2. DNS records (staging + production)"
+  log "  3. Caddy reverse proxy with TLS"
+  log "  4. UAL staging instance (test Stripe, auth bypass)"
+  log "  5. UAL production instance (live Stripe, full auth)"
+  log "  6. Run E2E tests against staging"
+  log ""
+  log "Staging domain:    $STAGING_DOMAIN"
+  log "Production domain: $PROD_DOMAIN"
+  log ""
+
+  # Pre-flight
+  preflight
+
+  # Step 1: Provision server
+  log_section "Step 1/5: Provisioning Server"
+  provision
+
+  # Step 2: Configure DNS
+  log_section "Step 2/5: Configuring DNS"
+  setup_dns "$SERVER_IP"
+
+  # Step 3: Install UAL (includes staging JWT generation)
+  log_section "Step 3/5: Installing UAL"
+  install_ual
+
+  # Step 4: Configure Caddy (TLS)
+  log_section "Step 4/5: Configuring TLS"
+  configure_caddy
+
+  # Step 5: Run E2E tests against staging
+  log_section "Step 5/5: Running E2E Tests"
+  run_e2e_tests
+
+  # Summary
+  var end_time = $(date +%s)
+  var duration = end_time - start_time
+  var duration_min = duration / 60
+
+  log_section "Deployment Complete!"
+  log ""
+  log "╔══════════════════════════════════════════════════════════════════════════╗"
+  log "║                         UAL DEPLOYMENT SUMMARY                           ║"
+  log "╠══════════════════════════════════════════════════════════════════════════╣"
+  log "║                                                                          ║"
+  log "║  Server IP:  $SERVER_IP"
+  log "║                                                                          ║"
+  log "║  Staging:    https://$STAGING_DOMAIN"
+  log "║    - Stripe test mode"
+  log "║    - Auth bypass enabled (is_santa JWT)"
+  log "║    - Admin: https://$STAGING_DOMAIN/admin"
+  log "║                                                                          ║"
+  log "║  Production: https://$PROD_DOMAIN"
+  log "║    - Stripe live mode"
+  log "║    - Full magic link auth"
+  log "║    - Admin: https://$PROD_DOMAIN/admin"
+  log "║                                                                          ║"
+  log "╠══════════════════════════════════════════════════════════════════════════╣"
+  log "║                                                                          ║"
+  log "║  Next steps:                                                             ║"
+  log "║    ./deploy/deploy.ysh test      # Run E2E tests again                   ║"
+  log "║    ./deploy/deploy.ysh logs      # View server logs                      ║"
+  log "║    ./deploy/deploy.ysh destroy   # Tear down infrastructure              ║"
+  log "║                                                                          ║"
+  log "╚══════════════════════════════════════════════════════════════════════════╝"
+  log ""
+  log "Deployment completed in ${duration_min} minutes (${duration} seconds)"
+}
+
+# -----------------------------------------------------------------------------
+# Individual Commands
+# -----------------------------------------------------------------------------
+
+proc cmd_provision {
+  preflight
+  provision
+}
+
+proc cmd_dns {
+  if test -z "$SERVER_IP" {
+    setglobal SERVER_IP = $(get_server_ip "$[CONFIG.server_name]")
+  }
+
+  if test -z "$SERVER_IP" {
+    log_error "Server not found. Run 'provision' first."
+    return 1
+  }
+
+  setup_dns "$SERVER_IP"
+}
+
+proc cmd_tls {
+  configure_caddy
+}
+
+proc cmd_install {
+  install_ual
+}
+
+proc cmd_test {
+  log_section "Running E2E Tests Against Staging"
+  run_e2e_tests
+}
+
+proc cmd_logs {
+  if test -z "$SERVER_IP" {
+    setglobal SERVER_IP = $(get_server_ip "$[CONFIG.server_name]")
+  }
+
+  log "Fetching logs from $SERVER_IP..."
+  ssh_exec "$SERVER_IP" "
+    echo '=== Staging Logs (last 50 lines) ==='
+    tail -50 /var/log/ual/staging.log 2>/dev/null || echo 'No staging logs'
+    echo ''
+    echo '=== Production Logs (last 50 lines) ==='
+    tail -50 /var/log/ual/production.log 2>/dev/null || echo 'No production logs'
+  "
+}
+
+proc cmd_destroy {
+  log_section "Destroying UAL Infrastructure"
+  log ""
+  log "This will delete:"
+  log "  - Hetzner server: $[CONFIG.server_name]"
+  log "  - DNS records for $STAGING_DOMAIN and $PROD_DOMAIN"
+  log ""
+
+  echo -n "Are you sure? (yes/no): "
+  read confirm
+
+  if test "$confirm" != "yes" {
+    log "Aborted"
+    return 0
+  }
+
+  delete_server "$[CONFIG.server_name]"
+
+  log_success "Infrastructure destroyed"
+}
+
+# -----------------------------------------------------------------------------
+# CLI Interface
+# -----------------------------------------------------------------------------
+
+proc usage {
+  echo "UAL Deployment Tool"
+  echo ""
+  echo "Usage: deploy.ysh <command> [options]"
+  echo ""
+  echo "Commands:"
+  echo "  full        Full deployment (provision + dns + install + tls + test)"
+  echo "  provision   Create Hetzner server"
+  echo "  dns         Configure DNS records"
+  echo "  install     Install/update UAL on server"
+  echo "  tls         Configure Caddy TLS"
+  echo "  test        Run E2E tests against staging"
+  echo "  logs        View server logs"
+  echo "  destroy     Tear down infrastructure"
+  echo ""
+  echo "Options:"
+  echo "  -h, --help  Show this help"
+  echo ""
+  echo "Environment variables (set in .env):"
+  echo "  HETZNER_API_TOKEN        Hetzner Cloud API token"
+  echo "  PORKBUN_API_KEY          Porkbun API key"
+  echo "  PORKBUN_API_SECRET       Porkbun API secret"
+  echo "  UAL_BASE_DOMAIN          Base domain (e.g., example.com)"
+  echo "  STRIPE_SECRET_KEY_TEST   Stripe test secret key"
+  echo "  STRIPE_SECRET_KEY        Stripe live secret key"
+}
+
+proc main {
+  if (len(ARGV) < 1) {
+    usage
+    return 0
+  }
+
+  var cmd = ARGV[0]
+
+  # Initialize config for all commands
+  init_config
+
+  case $cmd in
+    (-h|--help)
+      usage
+      ;;
+    (full)
+      deploy_full
+      ;;
+    (provision)
+      cmd_provision
+      ;;
+    (dns)
+      cmd_dns
+      ;;
+    (install)
+      cmd_install
+      ;;
+    (tls)
+      cmd_tls
+      ;;
+    (test)
+      cmd_test
+      ;;
+    (logs)
+      cmd_logs
+      ;;
+    (destroy)
+      cmd_destroy
+      ;;
+    (*)
+      log_error "Unknown command: $cmd"
+      usage
+      return 1
+      ;;
+  esac
+}
+
+# -----------------------------------------------------------------------------
+# Entry Point
+# -----------------------------------------------------------------------------
+
+if is-main {
+  main @ARGV
+}

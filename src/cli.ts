@@ -28,8 +28,14 @@ program
   .command('dev')
   .description('Run local dev server with rebuild-on-change')
   .option('-p, --port <port>', 'Port to run the dev server on', (value) => Number.parseInt(value, 10))
+  .option('--single-tenant-stripe', 'Enable single-tenant Stripe commerce mode with authentication')
+  .option('--stripe-mode <mode>', 'Stripe environment mode: staging or production', 'staging')
   .action(async (opts) => {
-    await runDevCommand({ port: opts.port });
+    await runDevCommand({
+      port: opts.port,
+      singleTenantStripe: Boolean(opts.singleTenantStripe),
+      stripeMode: opts.stripeMode === 'production' ? 'production' : 'staging',
+    });
   });
 
 program.command('build').description('Render content/templates into dist/').action(async () => {

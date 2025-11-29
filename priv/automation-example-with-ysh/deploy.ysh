@@ -1,0 +1,438 @@
+#!/usr/bin/env ysh
+# =============================================================================
+# Iocaine Full Infrastructure Deployment
+# Deploys: Iocaine VM + Systime VM + CloudFront + Coordinator + Load Test Swarm
+# One-time setup for load testing the iocaine classifier at edge
+# =============================================================================
+
+# Source all dependencies relative to this script's directory
+source $_this_dir/lib/config.ysh
+source $_this_dir/lib/aws-config.ysh
+source $_this_dir/provision.ysh
+source $_this_dir/provision-systime.ysh
+source $_this_dir/dns.ysh
+source $_this_dir/caddy.ysh
+source $_this_dir/aws/cloudfront.ysh
+source $_this_dir/aws/deploy-function.ysh
+source $_this_dir/aws/acm.ysh
+source $_this_dir/swarm/coordinator.ysh
+source $_this_dir/swarm/provision-swarm.ysh
+
+# -----------------------------------------------------------------------------
+# Pre-flight Checks
+# -----------------------------------------------------------------------------
+
+proc preflight {
+  log_section "Pre-flight Checks"
+
+  # Check required commands
+  require_commands gcloud aws curl jq dig passveil
+
+  # Verify gcloud is authenticated
+  log "Checking gcloud authentication..."
+  if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" > /dev/null 2>&1 {
+    log "ERROR: gcloud not authenticated. Run: gcloud auth login"
+    return 1
+  }
+
+  # Verify passveil has porkbun credentials
+  log "Checking Porkbun credentials..."
+  if ! passveil show porkbun.com/api > /dev/null 2>&1 {
+    log "ERROR: Porkbun credentials not found in passveil"
+    log "Add them with: passveil add porkbun.com/api"
+    return 1
+  }
+
+  # Verify AWS credentials
+  log "Checking AWS credentials..."
+  set_aws_region
+  try {
+    ensure_aws_auth
+  }
+
+  log "All pre-flight checks passed"
+}
+
+proc log_prefix_context {
+  if test -z "$DEPLOYMENT_PREFIX" {
+    return
+  }
+
+  log_section "Deployment Prefix"
+  log "Prefix:             $DEPLOYMENT_PREFIX"
+  log "Project ID:         $[CONFIG.project]"
+  log "Iocaine domain:     https://$[CONFIG.domain]"
+  log "Systime domain:     https://$[SYSTIME_CONFIG.domain]"
+  log "Coordinator domain: https://$[COORDINATOR_CONFIG.domain]"
+  log "CloudFront domain:  https://$[AWS_CONFIG.cloudfront.domain]"
+  log "CF function name:   $[AWS_CONFIG.cloudfront.function_name]"
+}
+
+# -----------------------------------------------------------------------------
+# Main Deploy Function
+# -----------------------------------------------------------------------------
+
+proc deploy {
+  var start_time = $(date +%s)
+
+  log_section "Iocaine Full Infrastructure Deployment"
+  log ""
+  log "This will deploy:"
+  log "  1. Iocaine VM on GCP (bot/garbage origin)"
+  log "  2. Systime VM on GCP (human/legitimate origin)"
+  log "  3. CloudFront distribution with classifier function"
+  log "  4. Coordinator VM with Grafana + InfluxDB"
+  log "  5. Load test swarm (3 VMs across 3 zones)"
+  log ""
+  log "Iocaine domain: https://$[CONFIG.domain]"
+  log "Systime domain: https://$[SYSTIME_CONFIG.domain]"
+  log "Project:        $[CONFIG.project]"
+  log ""
+
+  log_prefix_context
+
+  # Pre-flight checks
+  preflight
+
+  # =========================================================================
+  # Step 1: Provision Iocaine Instance (longest step - ~14 minutes for Rust)
+  # =========================================================================
+  log_section "Step 1/7: Provisioning Iocaine Instance"
+  provision  # Sets INSTANCE_IP global
+
+  if test -z "$INSTANCE_IP" {
+    log "ERROR: Failed to get iocaine instance IP"
+    return 1
+  }
+
+  log "Iocaine IP: $INSTANCE_IP"
+
+  # =========================================================================
+  # Step 2: Configure DNS for Iocaine
+  # =========================================================================
+  log_section "Step 2/7: Configuring Iocaine DNS"
+  dns_create $INSTANCE_IP
+
+  # =========================================================================
+  # Step 3: Enable TLS via Caddy (wait for DNS propagation)
+  # =========================================================================
+  log_section "Step 3/7: Enabling Iocaine TLS"
+  enable_caddy
+
+  # Wait for iocaine service to be fully ready
+  wait_for_ssh $[CONFIG.instance_name] $[CONFIG.project] $[CONFIG.zone]
+  wait_for_startup_complete $[CONFIG.instance_name] $[CONFIG.project] $[CONFIG.zone]
+
+  # =========================================================================
+  # Step 4: Provision Systime Instance (human origin - fast, no compilation)
+  # =========================================================================
+  log_section "Step 4/7: Provisioning Systime Instance"
+  provision_systime  # Sets SYSTIME_IP global
+
+  if test -z "$SYSTIME_IP" {
+    log "ERROR: Failed to get systime instance IP"
+    return 1
+  }
+
+  log "Systime IP: $SYSTIME_IP"
+
+  # Configure DNS and enable TLS for systime
+  systime_dns_create
+  enable_systime_caddy
+  wait_for_systime_ready
+
+  # =========================================================================
+  # Step 5: Deploy CloudFront Function + ACM Certificate + Distribution
+  # =========================================================================
+  log_section "Step 5/9: Deploying CloudFront Function"
+
+  set_aws_region
+  ensure_aws_auth
+
+  # Deploy the edge classifier function
+  deploy_function
+
+  # =========================================================================
+  # Step 6: Provision ACM Certificate for Custom Domain
+  # =========================================================================
+  log_section "Step 6/9: Provisioning ACM Certificate"
+
+  var cf_custom_domain = AWS_CONFIG.cloudfront.domain
+  log "Custom domain: $cf_custom_domain"
+
+  # Provision certificate (includes DNS validation via Porkbun)
+  provision_certificate "$cf_custom_domain"
+
+  if test -z "$ACM_CERTIFICATE_ARN" {
+    log "ERROR: Failed to provision ACM certificate"
+    return 1
+  }
+
+  log "Certificate ARN: $ACM_CERTIFICATE_ARN"
+
+  # =========================================================================
+  # Step 7: Create CloudFront Distribution with Custom Domain
+  # =========================================================================
+  log_section "Step 7/9: Creating CloudFront Distribution"
+
+  # Create CloudFront distribution with dual origins and custom domain
+  create_distribution $[CONFIG.domain] "$cf_custom_domain" "$ACM_CERTIFICATE_ARN"
+
+  # If distribution already existed, ensure alias is configured
+  get_cloudfront_distribution_id
+  if test -n "$CLOUDFRONT_DISTRIBUTION_ID" {
+    update_distribution_alias "$cf_custom_domain" "$ACM_CERTIFICATE_ARN"
+  }
+
+  var cf_raw_domain = $(aws cloudfront get-distribution \
+    --id "$CLOUDFRONT_DISTRIBUTION_ID" \
+    --query 'Distribution.DomainName' \
+    --output text)
+
+  log "CloudFront raw domain: $cf_raw_domain"
+
+  # =========================================================================
+  # Step 8: Create DNS CNAME for Custom Domain
+  # =========================================================================
+  log_section "Step 8/9: Creating CloudFront DNS CNAME"
+
+  var cf_subdomain = AWS_CONFIG.cloudfront.pkb_subdomain
+  dns_create_cname "$cf_subdomain" "$cf_raw_domain"
+
+  log "Custom domain: https://$cf_custom_domain"
+
+  # =========================================================================
+  # Step 9: Provision Coordinator + Load Test Swarm
+  # =========================================================================
+  log_section "Step 9/9: Provisioning Coordinator + Swarm"
+
+  provision_coordinator  # Sets COORDINATOR_IP global
+  log "Coordinator IP: $COORDINATOR_IP"
+
+  # Use custom domain for load testing (this is how real apps work)
+  var target_url = "https://$cf_custom_domain"
+  provision_swarm "$target_url" "$COORDINATOR_IP"
+
+  # =========================================================================
+  # Summary
+  # =========================================================================
+  var end_time = $(date +%s)
+  var duration = end_time - start_time
+  var duration_min = duration / 60
+
+  log_section "Deployment Complete!"
+  log ""
+  log "╔══════════════════════════════════════════════════════════════════════════╗"
+  log "║                    IOCAINE LOAD TEST INFRASTRUCTURE                      ║"
+  log "╠══════════════════════════════════════════════════════════════════════════╣"
+  log "║                                                                          ║"
+  log "║  CloudFront URL:    https://$cf_custom_domain"
+  log "║  (Raw CloudFront):  https://$cf_raw_domain"
+  log "║  Iocaine (bots):    $[CONFIG.instance_name] ($[CONFIG.domain])"
+  log "║  Systime (humans):  $[SYSTIME_CONFIG.instance_name] ($[SYSTIME_CONFIG.domain])"
+  log "║                                                                          ║"
+  log "╠══════════════════════════════════════════════════════════════════════════╣"
+  log "║                                                                          ║"
+  log "║  Coordinator:       https://$[COORDINATOR_CONFIG.domain]"
+  log "║  Grafana Dashboard: https://$[COORDINATOR_CONFIG.domain]/grafana"
+  log "║    Login:           admin / admin"
+  log "║                                                                          ║"
+  log "║  Load Generators:   9 VMs across 4 regions"
+  log "║                                                                          ║"
+  log "╠══════════════════════════════════════════════════════════════════════════╣"
+  log "║                                                                          ║"
+  log "║  Next steps:                                                             ║"
+  log "║    ./loadtest.ysh run             # Run load test                        ║"
+  log "║    ./loadtest.ysh run --duration 120s                                    ║"
+  log "║    ./destroy.ysh --swarm-only     # Cleanup swarm (keep infra)           ║"
+  log "║    ./destroy.ysh --full           # Full cleanup                         ║"
+  log "║                                                                          ║"
+  log "╚══════════════════════════════════════════════════════════════════════════╝"
+  log ""
+  log "Deployment completed in ${duration_min} minutes (${duration} seconds)"
+  log ""
+  log "Test the classifier:"
+  log "  # AI bot (should route to iocaine)"
+  log "  curl -I -A 'GPTBot/1.0' https://$cf_custom_domain/"
+  log ""
+  log "  # Fake browser (should route to iocaine)"
+  log "  curl -I -A 'Mozilla/5.0 Chrome/120' https://$cf_custom_domain/"
+  log ""
+  log "  # Legitimate browser (should route to systime)"
+  log "  curl -I -H 'Sec-Fetch-Mode: navigate' -A 'Mozilla/5.0 Chrome/120' https://$cf_custom_domain/"
+}
+
+# -----------------------------------------------------------------------------
+# Minimal Deploy (just Iocaine + TLS, no CloudFront or swarm)
+# -----------------------------------------------------------------------------
+
+proc deploy_minimal {
+  var start_time = $(date +%s)
+
+  log_section "Iocaine Minimal Deployment"
+  log ""
+  log "Target: https://$[CONFIG.domain]"
+  log ""
+
+  log_prefix_context
+
+  # Pre-flight checks (only gcloud + porkbun needed)
+  require_commands gcloud curl jq dig passveil
+
+  # Step 1: Provision GCE instance
+  log_section "Step 1/3: Provisioning Instance"
+  provision
+
+  if test -z "$INSTANCE_IP" {
+    log "ERROR: Failed to get instance IP"
+    return 1
+  }
+
+  log "Instance IP: $INSTANCE_IP"
+
+  # Step 2: Configure DNS
+  log_section "Step 2/3: Configuring DNS"
+  dns_create $INSTANCE_IP
+
+  # Step 3: Enable TLS
+  log_section "Step 3/3: Enabling TLS"
+  enable_caddy
+
+  var end_time = $(date +%s)
+  var duration = end_time - start_time
+
+  log_section "Minimal Deployment Complete!"
+  log ""
+  log "Iocaine is live at: https://$[CONFIG.domain]"
+  log "Deployment completed in ${duration} seconds"
+}
+
+# -----------------------------------------------------------------------------
+# CLI Interface
+# -----------------------------------------------------------------------------
+
+proc deploy_usage {
+  echo "Iocaine Infrastructure Deployment"
+  echo ""
+  echo "Usage: deploy.ysh [command] [options]"
+  echo ""
+  echo "Commands:"
+  echo "  full      Deploy full infrastructure (default)"
+  echo "  minimal   Deploy just iocaine VM with TLS"
+  echo ""
+  echo "Options:"
+  echo "  --prefix <value>    Apply a prefix to every resource (project, domains,"
+  echo "                     instances, CloudFront function, etc.)"
+  echo "  --prefix=value      Same as above using --prefix=VALUE form"
+  echo "  --dry-run           Show what would be created without deploying"
+  echo "  -h, --help          Show this help text"
+}
+
+proc deploy_dry_run {
+  echo ""
+  echo "═══════════════════════════════════════════════════════════════════════════════"
+  echo " DRY RUN - No resources will be created"
+  echo "═══════════════════════════════════════════════════════════════════════════════"
+  echo ""
+
+  if test -n "$DEPLOYMENT_PREFIX" {
+    echo "Deployment Prefix: $DEPLOYMENT_PREFIX"
+    echo ""
+  }
+
+  echo "GCP Resources:"
+  echo "  Project:              $[CONFIG.project]"
+  echo "  Zone:                 $[CONFIG.zone]"
+  echo "  Iocaine Instance:     $[CONFIG.instance_name]"
+  echo "  Iocaine Domain:       $[CONFIG.domain]"
+  echo "  Systime Instance:     $[SYSTIME_CONFIG.instance_name]"
+  echo "  Systime Domain:       $[SYSTIME_CONFIG.domain]"
+  echo "  Coordinator Instance: $[COORDINATOR_CONFIG.instance_name]"
+  echo "  Coordinator Domain:   $[COORDINATOR_CONFIG.domain]"
+  echo "  Swarm Prefix:         $[SWARM_CONFIG.instance_prefix]-*"
+  echo ""
+  echo "AWS CloudFront:"
+  echo "  Function Name:        $[AWS_CONFIG.cloudfront.function_name]"
+  echo "  Distribution Comment: $[AWS_CONFIG.cloudfront.distribution_comment]"
+  echo "  Custom Domain:        $[AWS_CONFIG.cloudfront.domain]"
+  echo "  Bot Origin:           $[CONFIG.domain]"
+  echo "  Human Origin:         $[SYSTIME_CONFIG.domain]"
+  echo ""
+  echo "DNS (Porkbun):"
+  echo "  Base Domain:          $[CONFIG.pkb_domain]"
+  echo "  Iocaine Subdomain:    $[CONFIG.pkb_subdomain]"
+  echo "  CloudFront Subdomain: $[AWS_CONFIG.cloudfront.pkb_subdomain]"
+  echo "  Systime Subdomain:    $[SYSTIME_CONFIG.pkb_subdomain]"
+  echo "  Coordinator Subdomain: $[COORDINATOR_CONFIG.pkb_subdomain]"
+  echo ""
+  echo "To deploy for real, remove --dry-run"
+}
+
+proc deploy_main {
+  var command = 'full'
+  var prefix = ''
+  var dry_run = false
+  var expect_prefix_value = false
+
+  for arg in @ARGV {
+    if test "$expect_prefix_value" = true {
+      setvar prefix = arg
+      setvar expect_prefix_value = false
+      continue
+    }
+
+    case $arg in
+      (--prefix)
+        setvar expect_prefix_value = true
+        ;;
+      (--prefix=*)
+        setvar prefix = $(echo "$arg" | cut -d'=' -f2-)
+        ;;
+      (--dry-run)
+        setvar dry_run = true
+        ;;
+      (-h|--help)
+        deploy_usage
+        return 0
+        ;;
+      (full|minimal)
+        setvar command = arg
+        ;;
+      (*)
+        echo "Unknown argument: $arg" >&2
+        deploy_usage >&2
+        return 1
+        ;;
+    esac
+  }
+
+  if test "$expect_prefix_value" = true {
+    echo "ERROR: --prefix flag requires a value" >&2
+    deploy_usage >&2
+    return 1
+  }
+
+  set_deployment_prefix "$prefix"
+
+  if test "$dry_run" = true {
+    deploy_dry_run
+    return 0
+  }
+
+  case $command in
+    full)
+      deploy
+      ;;
+    minimal)
+      deploy_minimal
+      ;;
+  esac
+}
+
+# -----------------------------------------------------------------------------
+# Entry Point
+# -----------------------------------------------------------------------------
+
+if is-main {
+  deploy_main @ARGV
+}

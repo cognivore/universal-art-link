@@ -154,3 +154,8 @@ nix develop --command pnpm cli dev
 - Merchant analytics dashboard (page views, cart additions)
 - Email notifications (order confirmations via Shopify webhooks)
 
+
+
+
+
+

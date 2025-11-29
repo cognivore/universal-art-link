@@ -20,6 +20,43 @@ import {
   updateMerchant,
   updateMerchantItem,
 } from './commerceStore.js';
+import {
+  createAuthConfig,
+  isAuthorizedEmail,
+  generateMagicLinkUrl,
+  verifyMagicLinkToken,
+  createJwt,
+  verifyJwt,
+  parseJwtFromCookie,
+  createSessionCookie,
+  createLogoutCookie,
+  getClientIp,
+  checkIpMismatch,
+  verifyStagingBypassJwt,
+  isStagingBypassEnabled,
+  type AuthConfig,
+  type JwtPayload,
+} from './auth.js';
+import { createAuthGuard, type AuthenticatedRequest } from './authMiddleware.js';
+import { createStripeConfig, getStripePublicConfig, validateStripeConfig } from './stripeConfig.js';
+import { createStripeService, type StripeService } from './stripeService.js';
+import {
+  readStripeProducts,
+  createStripeProduct,
+  updateStripeProduct,
+  deleteStripeProduct,
+  getStripeProduct,
+  createOrder,
+  updateOrder,
+  getOrderBySessionId,
+  listOrders,
+} from './stripeProductStore.js';
+import {
+  CheckoutSessionRequestSchema,
+  type StripeMode,
+  type StripeProductInput,
+  type StripeProductPatch,
+} from '../types/stripe-commerce.js';
 
 const mimeMap: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -44,6 +81,14 @@ export type AdminRuntimeConfig = {
   readonly adminBaseUrl: string;
   readonly strapiUrl: string;
   readonly previewPaths: ReadonlyArray<string>;
+  readonly singleTenantStripe?: boolean;
+  readonly stripeMode?: StripeMode;
+  readonly stripePublishableKey?: string;
+};
+
+export type StripeServerConfig = {
+  readonly enabled: boolean;
+  readonly mode: StripeMode;
 };
 
 type DevServerOptions = {
@@ -54,6 +99,7 @@ type DevServerOptions = {
   readonly adminService: AdminService;
   readonly paths: PathConfig;
   readonly runtimeConfig: AdminRuntimeConfig;
+  readonly stripeConfig?: StripeServerConfig;
 };
 
 export type DevServer = {
@@ -180,6 +226,397 @@ const readJsonBody = async (req: http.IncomingMessage): Promise<Record<string, u
   });
 
 const DEFAULT_OWNER_ID = 'local-admin';
+
+const readRawBody = async (req: http.IncomingMessage): Promise<Buffer> =>
+  new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    const maxBytes = 1 * 1024 * 1024;
+    req.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+      total += chunk.length;
+      if (total > maxBytes) {
+        req.destroy();
+        reject(new Error('Payload too large'));
+      }
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+
+const handleAuthApi = async (
+  req: http.IncomingMessage,
+  res: http.ServerResponse<http.IncomingMessage>,
+  paths: PathConfig,
+  authConfig: AuthConfig,
+  requestUrl: URL,
+  logger: Logger,
+): Promise<boolean> => {
+  if (!requestUrl.pathname.startsWith('/__ual/auth')) {
+    return false;
+  }
+
+  const method = req.method ?? 'GET';
+
+  // Extract client IP for tracking
+  const clientIp = getClientIp(
+    req.headers as Record<string, string | string[] | undefined>,
+    req.socket.remoteAddress,
+  );
+
+  try {
+    // POST /__ual/auth/request-link - Send magic link email
+    if (requestUrl.pathname === '/__ual/auth/request-link' && method === 'POST') {
+      const body = await readJsonBody(req);
+      const email = String(body.email ?? '').toLowerCase().trim();
+
+      if (!email) {
+        respondJson(res, 400, { error: 'Email is required' });
+        return true;
+      }
+
+      const admin = await isAuthorizedEmail(email, paths.contentDir);
+      if (!admin) {
+        // Don't reveal if email exists or not - just say we sent it
+        logger.info(`[auth] Magic link requested for unauthorized email: ${email} (IP: ${clientIp})`);
+        respondJson(res, 200, { message: 'If that email is authorized, a magic link has been sent' });
+        return true;
+      }
+
+      // Generate magic link with IP tracking
+      const magicLinkUrl = generateMagicLinkUrl(email, authConfig, clientIp);
+      // In production, you would send this via email
+      // For now, log it for development
+      logger.info(`[auth] Magic link for ${email} (IP: ${clientIp}): ${magicLinkUrl}`);
+
+      respondJson(res, 200, {
+        message: 'If that email is authorized, a magic link has been sent',
+        // Include URL in response only in development mode for testing
+        _devMagicLink: magicLinkUrl,
+      });
+      return true;
+    }
+
+    // GET /__ual/auth/verify - Verify magic link and issue JWT
+    if (requestUrl.pathname === '/__ual/auth/verify' && method === 'GET') {
+      const token = requestUrl.searchParams.get('token');
+      if (!token) {
+        respondJson(res, 400, { error: 'Token is required' });
+        return true;
+      }
+
+      const decoded = verifyMagicLinkToken(token, authConfig);
+      if (!decoded) {
+        respondJson(res, 401, { error: 'Invalid or expired token' });
+        return true;
+      }
+
+      // Check IP mismatch and log warning (but don't block)
+      const ipCheck = checkIpMismatch(decoded.requestIp, clientIp);
+      if (ipCheck.mismatch) {
+        logger.warn(`[auth] IP MISMATCH: ${ipCheck.message}`);
+      }
+
+      const admin = await isAuthorizedEmail(decoded.email, paths.contentDir);
+      if (!admin) {
+        respondJson(res, 401, { error: 'Email not authorized' });
+        return true;
+      }
+
+      // Create JWT with IP tracking
+      const jwt = createJwt(admin, authConfig, {
+        requestIp: decoded.requestIp,
+        verifyIp: clientIp,
+      });
+      const cookie = createSessionCookie(jwt, authConfig.jwtTtlSeconds);
+
+      res.setHeader('Set-Cookie', cookie);
+      // Redirect to admin panel
+      res.statusCode = 302;
+      res.setHeader('Location', '/admin');
+      res.end();
+      return true;
+    }
+
+    // GET /__ual/auth/session - Check current session
+    if (requestUrl.pathname === '/__ual/auth/session' && method === 'GET') {
+      const cookieHeader = req.headers.cookie;
+      const token = parseJwtFromCookie(cookieHeader);
+
+      if (!token) {
+        respondJson(res, 200, { authenticated: false });
+        return true;
+      }
+
+      // Try normal JWT verification first
+      let payload = verifyJwt(token, authConfig);
+
+      // If normal verification fails and staging bypass is enabled, try staging bypass
+      if (!payload && isStagingBypassEnabled()) {
+        payload = verifyStagingBypassJwt(token, authConfig);
+        if (payload) {
+          logger.info(`[auth] Staging bypass JWT used (is_santa=true) 🎅`);
+        }
+      }
+
+      if (!payload) {
+        respondJson(res, 200, { authenticated: false });
+        return true;
+      }
+
+      respondJson(res, 200, {
+        authenticated: true,
+        user: { email: payload.sub, name: payload.name },
+        expiresAt: payload.exp * 1000,
+        isSanta: payload.is_santa ?? false,
+      });
+      return true;
+    }
+
+    // POST /__ual/auth/logout - Clear session
+    if (requestUrl.pathname === '/__ual/auth/logout' && method === 'POST') {
+      res.setHeader('Set-Cookie', createLogoutCookie());
+      respondJson(res, 200, { message: 'Logged out' });
+      return true;
+    }
+
+    respondJson(res, 404, { error: 'Unknown auth endpoint' });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Auth request failed';
+    logger.error('[auth] Error:', error);
+    respondJson(res, 500, { error: message });
+    return true;
+  }
+};
+
+const handleStripeApi = async (
+  req: AuthenticatedRequest,
+  res: http.ServerResponse<http.IncomingMessage>,
+  paths: PathConfig,
+  stripeService: StripeService,
+  requestUrl: URL,
+  baseUrl: string,
+  logger: Logger,
+): Promise<boolean> => {
+  if (!requestUrl.pathname.startsWith('/__ual/api/stripe')) {
+    return false;
+  }
+
+  const subPath = requestUrl.pathname.replace('/__ual/api/stripe', '').replace(/^\/+/, '');
+  const segments = subPath ? subPath.split('/').filter(Boolean) : [];
+  const method = req.method ?? 'GET';
+
+  try {
+    // GET /__ual/api/stripe/products - List all products
+    if (segments.length === 0 || (segments[0] === 'products' && segments.length === 1 && method === 'GET')) {
+      const config = await readStripeProducts(paths);
+      respondJson(res, 200, {
+        ok: true,
+        products: config.products,
+        publishableKey: stripeService.getPublishableKey(),
+      });
+      return true;
+    }
+
+    // POST /__ual/api/stripe/products - Create product (requires auth)
+    if (segments[0] === 'products' && segments.length === 1 && method === 'POST') {
+      if (!req.user) {
+        respondJson(res, 401, { error: 'Authentication required' });
+        return true;
+      }
+      const body = await readJsonBody(req);
+      const input: StripeProductInput = {
+        name: String(body.name ?? ''),
+        description: body.description ? String(body.description) : undefined,
+        imageUrl: body.imageUrl ? String(body.imageUrl) : undefined,
+        type: body.type === 'subscription' ? 'subscription' : 'one_time',
+        priceAmountCents: Number(body.priceAmountCents ?? 0),
+        currency: body.currency ? String(body.currency) as 'USD' : 'USD',
+        interval: body.interval ? String(body.interval) as 'month' : null,
+        intervalCount: body.intervalCount ? Number(body.intervalCount) : null,
+        isActive: body.isActive !== false,
+        sortOrder: typeof body.sortOrder === 'number' ? body.sortOrder : 0,
+        metadata: body.metadata as Record<string, string> | undefined,
+      };
+      const product = await createStripeProduct(paths, input);
+      respondJson(res, 201, product);
+      return true;
+    }
+
+    // PATCH/DELETE /__ual/api/stripe/products/:id - Update/delete product (requires auth)
+    if (segments[0] === 'products' && segments.length === 2) {
+      const productId = segments[1]!;
+
+      if (method === 'GET') {
+        const product = await getStripeProduct(paths, productId);
+        if (!product) {
+          respondJson(res, 404, { error: 'Product not found' });
+          return true;
+        }
+        respondJson(res, 200, product);
+        return true;
+      }
+
+      if (!req.user) {
+        respondJson(res, 401, { error: 'Authentication required' });
+        return true;
+      }
+
+      if (method === 'PATCH') {
+        const body = await readJsonBody(req);
+        const patch: StripeProductPatch = {
+          name: body.name ? String(body.name) : undefined,
+          description: body.description !== undefined ? String(body.description) : undefined,
+          imageUrl: body.imageUrl !== undefined ? String(body.imageUrl) : undefined,
+          type: body.type ? (body.type === 'subscription' ? 'subscription' : 'one_time') : undefined,
+          priceAmountCents: body.priceAmountCents !== undefined ? Number(body.priceAmountCents) : undefined,
+          currency: body.currency ? String(body.currency) as 'USD' : undefined,
+          interval: body.interval !== undefined ? (body.interval ? String(body.interval) as 'month' : null) : undefined,
+          intervalCount: body.intervalCount !== undefined ? (body.intervalCount ? Number(body.intervalCount) : null) : undefined,
+          isActive: body.isActive !== undefined ? Boolean(body.isActive) : undefined,
+          sortOrder: body.sortOrder !== undefined ? Number(body.sortOrder) : undefined,
+          metadata: body.metadata as Record<string, string> | undefined,
+        };
+        const product = await updateStripeProduct(paths, productId, patch);
+        respondJson(res, 200, product);
+        return true;
+      }
+
+      if (method === 'DELETE') {
+        await deleteStripeProduct(paths, productId);
+        res.statusCode = 204;
+        res.end();
+        return true;
+      }
+    }
+
+    // POST /__ual/api/stripe/checkout - Create checkout session (public)
+    if (segments[0] === 'checkout' && method === 'POST') {
+      const body = await readJsonBody(req);
+      const parsed = CheckoutSessionRequestSchema.safeParse(body);
+      if (!parsed.success) {
+        respondJson(res, 400, { error: 'Invalid request', details: parsed.error.issues });
+        return true;
+      }
+
+      const product = await getStripeProduct(paths, parsed.data.productId);
+      if (!product) {
+        respondJson(res, 404, { error: 'Product not found' });
+        return true;
+      }
+      if (!product.isActive) {
+        respondJson(res, 400, { error: 'Product is not available' });
+        return true;
+      }
+
+      const successUrl = parsed.data.successUrl ?? `${baseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
+      const cancelUrl = parsed.data.cancelUrl ?? `${baseUrl}/shop`;
+
+      const session = await stripeService.createCheckoutSession(product, parsed.data, {
+        success: successUrl,
+        cancel: cancelUrl,
+      });
+
+      // Create pending order record
+      await createOrder(paths, {
+        stripeSessionId: session.sessionId,
+        productId: product.id,
+        productName: product.name,
+        quantity: parsed.data.quantity,
+        amountTotalCents: product.priceAmountCents * parsed.data.quantity,
+        currency: product.currency,
+        customerEmail: parsed.data.customerEmail,
+        status: 'pending',
+        type: product.type,
+      });
+
+      respondJson(res, 200, session);
+      return true;
+    }
+
+    // POST /__ual/api/stripe/webhook - Handle Stripe webhooks
+    if (segments[0] === 'webhook' && method === 'POST') {
+      const signature = req.headers['stripe-signature'];
+      if (!signature || typeof signature !== 'string') {
+        respondJson(res, 400, { error: 'Missing stripe-signature header' });
+        return true;
+      }
+
+      const rawBody = await readRawBody(req);
+
+      try {
+        const event = stripeService.constructWebhookEvent(rawBody, signature);
+        logger.info(`[stripe] Webhook event: ${event.type}`);
+
+        switch (event.type) {
+          case 'checkout.session.completed': {
+            const session = event.data.object;
+            const order = await getOrderBySessionId(paths, session.id);
+            if (order) {
+              await updateOrder(paths, order.id, {
+                status: 'completed',
+                stripeCustomerId: session.customer as string | undefined,
+                subscriptionId: session.subscription as string | undefined,
+              });
+              logger.info(`[stripe] Order ${order.id} completed`);
+            }
+            break;
+          }
+          case 'checkout.session.expired': {
+            const session = event.data.object;
+            const order = await getOrderBySessionId(paths, session.id);
+            if (order) {
+              await updateOrder(paths, order.id, { status: 'failed' });
+              logger.info(`[stripe] Order ${order.id} expired`);
+            }
+            break;
+          }
+        }
+
+        respondJson(res, 200, { received: true });
+        return true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Webhook verification failed';
+        logger.error('[stripe] Webhook error:', error);
+        respondJson(res, 400, { error: message });
+        return true;
+      }
+    }
+
+    // GET /__ual/api/stripe/orders - List orders (requires auth)
+    if (segments[0] === 'orders' && segments.length === 1 && method === 'GET') {
+      if (!req.user) {
+        respondJson(res, 401, { error: 'Authentication required' });
+        return true;
+      }
+      const limit = requestUrl.searchParams.get('limit');
+      const status = requestUrl.searchParams.get('status');
+      const orders = await listOrders(paths, {
+        limit: limit ? Number(limit) : undefined,
+        status: status as 'pending' | 'completed' | 'failed' | 'refunded' | undefined,
+      });
+      respondJson(res, 200, { ok: true, orders });
+      return true;
+    }
+
+    // GET /__ual/api/stripe/config - Get public Stripe config
+    if (segments[0] === 'config' && method === 'GET') {
+      respondJson(res, 200, {
+        publishableKey: stripeService.getPublishableKey(),
+      });
+      return true;
+    }
+
+    respondJson(res, 404, { error: 'Unknown Stripe endpoint' });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Stripe request failed';
+    logger.error('[stripe] Error:', error);
+    respondJson(res, 500, { error: message });
+    return true;
+  }
+};
 
 const handleCommerceApi = async (
   req: http.IncomingMessage,
@@ -459,11 +896,45 @@ export const startDevServer = ({
   adminService,
   paths,
   runtimeConfig,
+  stripeConfig,
 }: DevServerOptions): DevServer => {
   const clients = new Set<LiveReloadClient>();
   const runtimeState: AdminRuntimeConfig = { ...runtimeConfig };
 
-  const server = http.createServer(async (req, res) => {
+  // Initialize auth and stripe services if single-tenant-stripe mode is enabled
+  const isStripeMode = stripeConfig?.enabled ?? false;
+  const baseUrl = runtimeConfig.previewBaseUrl;
+
+  let authConfig: AuthConfig | null = null;
+  let stripeService: StripeService | null = null;
+  let authGuard: ((req: AuthenticatedRequest, res: http.ServerResponse, pathname: string) => boolean) | null = null;
+
+  if (isStripeMode) {
+    logger.info(`[devserver] Single-tenant Stripe mode enabled (${stripeConfig!.mode})`);
+
+    authConfig = createAuthConfig({ baseUrl });
+    authGuard = createAuthGuard(authConfig);
+
+    try {
+      const stripeApiConfig = createStripeConfig(stripeConfig!.mode);
+      validateStripeConfig(stripeApiConfig);
+      stripeService = createStripeService(stripeApiConfig);
+
+      // Update runtime config with Stripe info
+      Object.assign(runtimeState, {
+        singleTenantStripe: true,
+        stripeMode: stripeConfig!.mode,
+        stripePublishableKey: getStripePublicConfig(stripeApiConfig).publishableKey,
+      });
+
+      logger.info(`[devserver] Stripe service initialized (${stripeConfig!.mode} mode)`);
+    } catch (error) {
+      logger.error('[devserver] Failed to initialize Stripe:', error);
+      throw error;
+    }
+  }
+
+  const server = http.createServer(async (req: AuthenticatedRequest, res) => {
     const requestUrl = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
     const requestMethod = req.method ?? 'GET';
     const requestPath = requestUrl.pathname;
@@ -472,7 +943,7 @@ export const startDevServer = ({
 
     if (requestUrl.pathname === '/__ual/healthz') {
       logger.info('[devserver] Health check');
-      respondJson(res, 200, { ok: true, ts: Date.now() });
+      respondJson(res, 200, { ok: true, ts: Date.now(), stripeMode: isStripeMode });
       return;
     }
 
@@ -515,6 +986,44 @@ export const startDevServer = ({
       });
 
       return;
+    }
+
+    // Handle auth endpoints (only in Stripe mode)
+    if (isStripeMode && authConfig && requestUrl.pathname.startsWith('/__ual/auth')) {
+      try {
+        const handled = await handleAuthApi(req, res, paths, authConfig, requestUrl, logger);
+        if (handled) {
+          return;
+        }
+      } catch (error) {
+        logger.error('Auth API failed', error);
+        respondJson(res, 500, { message: 'Auth API error' });
+        return;
+      }
+    }
+
+    // Apply auth guard for protected routes in Stripe mode
+    if (isStripeMode && authGuard && authConfig) {
+      const allowed = authGuard(req, res, requestPath);
+      if (!allowed) {
+        // Response already sent by authGuard
+        return;
+      }
+    }
+
+    // Handle Stripe API endpoints (only in Stripe mode)
+    if (isStripeMode && stripeService && requestUrl.pathname.startsWith('/__ual/api/stripe')) {
+      logger.info(`[devserver] Stripe API: ${requestMethod} ${requestPath}`);
+      try {
+        const handled = await handleStripeApi(req, res, paths, stripeService, requestUrl, baseUrl, logger);
+        if (handled) {
+          return;
+        }
+      } catch (error) {
+        logger.error('Stripe API failed', error);
+        respondJson(res, 500, { message: 'Stripe API error' });
+        return;
+      }
     }
 
     if (requestUrl.pathname.startsWith('/__ual/api')) {

@@ -6,7 +6,9 @@ import { renderBlogPost, renderSections } from './sections.js';
 import { clearTemplateCache, renderWithLayout } from './template.js';
 import { BlogPost, Page, SiteConfig } from '../types/content.js';
 import { readCommerceData, type CommerceSnapshot } from './commerceStore.js';
+import { readStripeProducts } from './stripeProductStore.js';
 import type { CatalogConfig, Merchant, MerchantItem } from '../types/commerce.js';
+import type { StripeProduct } from '../types/stripe-commerce.js';
 
 export type BuildOptions = {
   readonly rootDir: string;
@@ -424,6 +426,122 @@ const renderCartSection = (isSingleTenant = false, shopName = ''): string => {
   </section>`;
 };
 
+// Stripe Commerce Page Builders
+
+const buildStripeShopPageDefinition = (site: SiteConfig, products: StripeProduct[]): CommercePageDefinition => {
+  const stripeScript = `<script defer src="../scripts/stripe-checkout.js"></script>`;
+
+  const heroSection = `<section class="section commerce-hero stack">
+    <p class="kicker">Shop</p>
+    <h1 class="display">${escapeHtmlLite(site.siteTitle)}</h1>
+    <p class="measure">Browse our products and subscriptions</p>
+  </section>`;
+
+  // If there are products, render them statically; otherwise use dynamic loading
+  const catalogSection = products.length > 0
+    ? renderStripeProductsSection(products)
+    : `<section class="section commerce-item-grid stack" data-stripe-catalog>
+        <div class="commerce-loading">
+          <p class="measure">Loading products...</p>
+        </div>
+      </section>`;
+
+  const dataScript = createCommerceDataScript({ mode: 'stripe', products });
+
+  return {
+    slug: '/shop',
+    title: 'Shop',
+    description: `Shop from ${site.siteTitle}`,
+    sections: [heroSection, catalogSection, dataScript, stripeScript],
+  };
+};
+
+const renderStripeProductsSection = (products: StripeProduct[]): string => {
+  const activeProducts = products.filter((p) => p.isActive).sort((a, b) => a.sortOrder - b.sortOrder);
+
+  if (activeProducts.length === 0) {
+    return `<section class="section commerce-item-grid stack">
+      <div class="commerce-empty">
+        <h3>No products available yet</h3>
+        <p class="measure">Check back soon for new offerings.</p>
+      </div>
+    </section>`;
+  }
+
+  const cards = activeProducts.map((product) => {
+    const image = product.imageUrl
+      ? `<div class="commerce-item-card__media">
+          <img src="${escapeHtmlLite(product.imageUrl)}" alt="${escapeHtmlLite(product.name)}" loading="lazy" />
+        </div>`
+      : '';
+
+    const price = (product.priceAmountCents / 100).toLocaleString('en-US', {
+      style: 'currency',
+      currency: product.currency,
+    });
+    const interval = product.type === 'subscription' && product.interval ? ` / ${product.interval}` : '';
+    const typeLabel = product.type === 'subscription'
+      ? '<span class="commerce-item-card__badge">Subscription</span>'
+      : '';
+
+    const description = product.description
+      ? `<p class="measure">${escapeHtmlLite(product.description)}</p>`
+      : '';
+
+    const quantityInput = product.type === 'one_time'
+      ? `<label class="commerce-item-card__quantity">
+          <span class="micro-label">Quantity</span>
+          <input type="number" min="1" value="1" data-quantity-input />
+        </label>`
+      : '';
+
+    const buttonLabel = product.type === 'subscription' ? 'Subscribe' : 'Buy now';
+
+    return `<article class="commerce-item-card" data-stripe-product="${escapeHtmlLite(product.id)}">
+      ${image}
+      <div class="commerce-item-card__body">
+        <div class="commerce-item-card__intro">
+          <h3>${escapeHtmlLite(product.name)}</h3>
+          <span class="commerce-item-card__price">${escapeHtmlLite(price)}${interval}</span>
+          ${typeLabel}
+        </div>
+        ${description}
+        <div class="commerce-item-card__actions">
+          ${quantityInput}
+          <button class="btn btn--solid" type="button" data-checkout-button>${buttonLabel}</button>
+        </div>
+      </div>
+    </article>`;
+  }).join('\n');
+
+  return `<section class="section commerce-item-grid stack">
+    <div class="commerce-item-grid__items">
+      ${cards}
+    </div>
+  </section>`;
+};
+
+const buildCheckoutSuccessPageDefinition = (site: SiteConfig): CommercePageDefinition => {
+  const content = `<section class="section stack" style="text-align: center; padding-top: 4rem;">
+    <div class="stack" style="max-width: 500px; margin: 0 auto;">
+      <p class="kicker">Order confirmed</p>
+      <h1 class="display">Thank you!</h1>
+      <p class="measure">Your order has been received and is being processed. You will receive a confirmation email shortly.</p>
+      <div style="margin-top: 2rem;">
+        <a class="btn btn--solid" href="/shop">Continue shopping</a>
+        <a class="btn btn--ghost" href="/" style="margin-left: 1rem;">Back to home</a>
+      </div>
+    </div>
+  </section>`;
+
+  return {
+    slug: '/checkout/success',
+    title: 'Order Confirmed',
+    description: 'Your order has been confirmed',
+    sections: [content],
+  };
+};
+
 const buildSingleShopPageDefinition = (site: SiteConfig, commerce: CommerceSnapshot): CommercePageDefinition | null => {
   if (!commerce.shop || !commerce.shop.domain) {
     return null;
@@ -586,10 +704,11 @@ export const buildSite = async ({ rootDir, outDir, invalidateTemplates }: BuildO
   }
 
   const paths = createPathConfig(rootDir, outDir);
-  const [siteConfig, pages, commerce] = await Promise.all([
+  const [siteConfig, pages, commerce, stripeProducts] = await Promise.all([
     loadSiteConfig(paths.contentDir),
     loadPages(paths.pagesDir),
     readCommerceData(paths),
+    readStripeProducts(paths),
   ]);
 
   await fs.ensureDir(paths.outputDir);
@@ -609,22 +728,35 @@ export const buildSite = async ({ rootDir, outDir, invalidateTemplates }: BuildO
 
   const commercePreviewPaths: string[] = [];
 
-  if (commerce.enableMultiMerchant) {
-    // Multi-merchant mode: generate /merchants pages
+  // Check if we have Stripe products configured
+  const hasStripeProducts = stripeProducts.products.length > 0;
+
+  if (hasStripeProducts) {
+    // Stripe commerce mode: generate /shop page with Stripe checkout
+    const stripeShopPage = buildStripeShopPageDefinition(siteConfig, stripeProducts.products);
+    rendered.push(await renderCommercePage(stripeShopPage, siteConfig, paths));
+    commercePreviewPaths.push(stripeShopPage.slug);
+
+    // Generate checkout success page
+    const successPage = buildCheckoutSuccessPageDefinition(siteConfig);
+    rendered.push(await renderCommercePage(successPage, siteConfig, paths));
+    commercePreviewPaths.push(successPage.slug);
+  } else if (commerce.enableMultiMerchant) {
+    // Multi-merchant Shopify mode: generate /merchants pages
     const commercePages = buildCommercePageDefinitions(siteConfig, commerce);
     for (const commercePage of commercePages) {
       rendered.push(await renderCommercePage(commercePage, siteConfig, paths));
       commercePreviewPaths.push(commercePage.slug);
     }
-  } else {
-    // Single-tenant mode: generate /shop page
+  } else if (commerce.shop?.domain) {
+    // Single-tenant Shopify mode: generate /shop page
     const shopPage = buildSingleShopPageDefinition(siteConfig, commerce);
     if (shopPage) {
       rendered.push(await renderCommercePage(shopPage, siteConfig, paths));
       commercePreviewPaths.push(shopPage.slug);
     }
 
-    // Always generate /cart page
+    // Always generate /cart page for Shopify mode
     const cartPage: CommercePageDefinition = {
       slug: '/cart',
       title: 'Cart',

@@ -1,0 +1,495 @@
+#!/usr/bin/env ysh
+# =============================================================================
+# CloudFront Distribution Provisioning
+# Creates distribution with dual origins: human (memorici.de) + bot (iocaine)
+# =============================================================================
+
+source-guard aws/cloudfront.ysh || return 0
+
+source $_this_dir/../lib/config.ysh
+source $_this_dir/../lib/aws-config.ysh
+
+# -----------------------------------------------------------------------------
+# Distribution Configuration using Native YSH Data Structures
+# -----------------------------------------------------------------------------
+
+proc make_custom_origin_config {
+  # Returns a Dict for CustomOriginConfig
+  # YSH native structured data - no heredoc ugliness!
+
+  setglobal _ORIGIN_CONFIG = {
+    HTTPPort: 80,
+    HTTPSPort: 443,
+    OriginProtocolPolicy: 'https-only',
+    OriginSslProtocols: {
+      Quantity: 1,
+      Items: ['TLSv1.2'],
+    },
+    OriginReadTimeout: 30,
+    OriginKeepaliveTimeout: 5,
+  }
+}
+
+proc make_origin (origin_id, domain_name) {
+  # Create an origin Dict for CloudFront
+  make_custom_origin_config
+
+  setglobal _ORIGIN = {
+    Id: origin_id,
+    DomainName: domain_name,
+    CustomOriginConfig: _ORIGIN_CONFIG,
+    ConnectionAttempts: 3,
+    ConnectionTimeout: 10,
+  }
+}
+
+proc make_distribution_config (human_domain, bot_domain, function_arn, comment, custom_domain, certificate_arn) {
+  # Build the complete CloudFront distribution config as native YSH Dict
+  # custom_domain and certificate_arn can be empty string for default CloudFront cert
+
+  var caller_ref = $(date +%s)
+
+  # Build origins
+  make_custom_origin_config
+  var origin_config = _ORIGIN_CONFIG
+
+  var human_origin = {
+    Id: 'systime-human',
+    DomainName: human_domain,
+    CustomOriginConfig: origin_config,
+    ConnectionAttempts: 3,
+    ConnectionTimeout: 10,
+  }
+
+  var bot_origin = {
+    Id: 'botOrigin',
+    DomainName: bot_domain,
+    CustomOriginConfig: origin_config,
+    ConnectionAttempts: 3,
+    ConnectionTimeout: 10,
+  }
+
+  # Build cache behavior
+  # Custom policy: IocaineRespectOriginCacheControl
+  # - MinTTL=0: respects origin Cache-Control (iocaine sends no-store, systime can cache)
+  # - x-traffic-class in cache key: separates bot/human cached responses
+  # - QueryStrings: all forwarded for cache variation
+  # - IocaineOriginRequest: Forwards user-agent and sec-fetch-mode for classification
+  var default_cache_behavior = {
+    TargetOriginId: 'systime-human',
+    ViewerProtocolPolicy: 'redirect-to-https',
+    AllowedMethods: {
+      Quantity: 7,
+      Items: ['GET', 'HEAD', 'OPTIONS', 'PUT', 'POST', 'PATCH', 'DELETE'],
+      CachedMethods: {
+        Quantity: 2,
+        Items: ['GET', 'HEAD'],
+      },
+    },
+    CachePolicyId: '25bd2313-f0e7-4c9e-a20e-0fd897303c2a',
+    OriginRequestPolicyId: '52c1d6c3-8d1c-4210-8450-45f5eaa126f7',
+    Compress: true,
+    FunctionAssociations: {
+      Quantity: 1,
+      Items: [
+        {
+          FunctionARN: function_arn,
+          EventType: 'viewer-request',
+        },
+      ],
+    },
+  }
+
+  # Determine certificate config based on whether custom domain is provided
+  var viewer_cert = null
+  var aliases = null
+
+  if test -n "$custom_domain" && test -n "$certificate_arn" {
+    # Use ACM certificate with custom domain
+    setvar viewer_cert = {
+      ACMCertificateArn: certificate_arn,
+      SSLSupportMethod: 'sni-only',
+      MinimumProtocolVersion: 'TLSv1.2_2021',
+    }
+    setvar aliases = {
+      Quantity: 1,
+      Items: [custom_domain],
+    }
+    log "Using custom domain: $custom_domain with ACM certificate"
+  } else {
+    # Use CloudFront default certificate
+    setvar viewer_cert = {
+      CloudFrontDefaultCertificate: true,
+      MinimumProtocolVersion: 'TLSv1.2_2021',
+    }
+    setvar aliases = {
+      Quantity: 0,
+      Items: [],
+    }
+  }
+
+  # Assemble complete config
+  setglobal DISTRIBUTION_CONFIG = {
+    CallerReference: caller_ref,
+    Comment: comment,
+    Enabled: true,
+    PriceClass: AWS_CONFIG.cloudfront.price_class,
+    HttpVersion: 'http2and3',
+    IsIPV6Enabled: true,
+    Aliases: aliases,
+    Origins: {
+      Quantity: 2,
+      Items: [human_origin, bot_origin],
+    },
+    DefaultCacheBehavior: default_cache_behavior,
+    ViewerCertificate: viewer_cert,
+  }
+}
+
+proc write_distribution_config_to_file (config_file) {
+  # Write the DISTRIBUTION_CONFIG Dict to a JSON file
+  json write (DISTRIBUTION_CONFIG, space=2) > $config_file
+}
+
+# -----------------------------------------------------------------------------
+# Main CloudFront Operations
+# -----------------------------------------------------------------------------
+
+proc create_distribution (bot_origin_domain, custom_domain, certificate_arn) {
+  # Create CloudFront distribution with dual origins
+  # bot_origin_domain: The iocaine instance domain (e.g., chunky.melira.fere.me)
+  # custom_domain and certificate_arn: for custom domain with ACM cert (can be empty)
+
+  log_section "Creating CloudFront Distribution"
+
+  # Use SYSTIME_CONFIG.domain for human origin (supports prefixed deployments)
+  var human_domain = SYSTIME_CONFIG.domain
+  var comment = AWS_CONFIG.cloudfront.distribution_comment
+
+  log "Human origin: $human_domain"
+  log "Bot origin:   $bot_origin_domain"
+  if test -n "$custom_domain" {
+    log "Custom domain: $custom_domain"
+  }
+
+  # Check if distribution already exists
+  get_cloudfront_distribution_id
+
+  if test -n "$CLOUDFRONT_DISTRIBUTION_ID" {
+    log "Distribution already exists: $CLOUDFRONT_DISTRIBUTION_ID"
+    log "Use update_distribution to modify it"
+    return 0
+  }
+
+  # Get function ARN (must exist before creating distribution)
+  get_cloudfront_function_arn
+
+  if test -z "$CLOUDFRONT_FUNCTION_ARN" {
+    log "ERROR: CloudFront function not found. Deploy it first with deploy-function.ysh"
+    exit 1
+  }
+
+  log "Using function: $CLOUDFRONT_FUNCTION_ARN"
+
+  # Build config using native YSH structured data
+  make_distribution_config "$human_domain" "$bot_origin_domain" "$CLOUDFRONT_FUNCTION_ARN" "$comment" "$custom_domain" "$certificate_arn"
+
+  var config_file = $(mktemp)
+  trap "rm -f $config_file" EXIT
+
+  write_distribution_config_to_file "$config_file"
+
+  log "Creating distribution..."
+
+  var result = $(aws cloudfront create-distribution \
+    --distribution-config "file://$config_file" \
+    --output json)
+
+  json read (&result_dict) <<< $result
+
+  var dist_id = result_dict.Distribution.Id
+  var dist_domain = result_dict.Distribution.DomainName
+
+  log ""
+  log "Distribution created!"
+  log "  ID:     $dist_id"
+  log "  Domain: $dist_domain"
+  log ""
+  log "Waiting for deployment (this takes 5-15 minutes)..."
+
+  wait_for_distribution_deployed "$dist_id"
+
+  setglobal CLOUDFRONT_DISTRIBUTION_ID = "$dist_id"
+  setglobal CLOUDFRONT_DOMAIN = "$dist_domain"
+}
+
+proc update_distribution_origins (bot_origin_domain) {
+  # Update existing distribution with new bot origin
+  log_section "Updating CloudFront Distribution Origins"
+
+  get_cloudfront_distribution_id
+
+  if test -z "$CLOUDFRONT_DISTRIBUTION_ID" {
+    log "ERROR: No distribution found. Create one first."
+    exit 1
+  }
+
+  log "Updating distribution: $CLOUDFRONT_DISTRIBUTION_ID"
+  log "New bot origin: $bot_origin_domain"
+
+  # Get current config and ETag
+  var current = $(aws cloudfront get-distribution-config \
+    --id "$CLOUDFRONT_DISTRIBUTION_ID" \
+    --output json)
+
+  json read (&current_dict) <<< $current
+
+  var etag = current_dict.ETag
+  var config = current_dict.DistributionConfig
+
+  # Update bot origin domain using jq (YSH doesn't have deep mutation yet)
+  # Note: Origin IDs are 'systime-human' (default) and 'botOrigin' (iocaine)
+  var updated_config = $(echo "$current" | jq \
+    --arg domain "$bot_origin_domain" \
+    '.DistributionConfig | .Origins.Items = [.Origins.Items[] | if .Id == "botOrigin" then .DomainName = $domain else . end]')
+
+  var config_file = $(mktemp)
+  trap "rm -f $config_file" EXIT
+  echo "$updated_config" > $config_file
+
+  aws cloudfront update-distribution \
+    --id "$CLOUDFRONT_DISTRIBUTION_ID" \
+    --distribution-config "file://$config_file" \
+    --if-match "$etag"
+
+  log "Distribution update initiated"
+  wait_for_distribution_deployed "$CLOUDFRONT_DISTRIBUTION_ID"
+}
+
+proc get_distribution_info {
+  # Print current distribution status and configuration
+  log_section "CloudFront Distribution Info"
+
+  get_cloudfront_distribution_id
+
+  if test -z "$CLOUDFRONT_DISTRIBUTION_ID" {
+    log "No distribution found with comment: $[AWS_CONFIG.cloudfront.distribution_comment]"
+    return 1
+  }
+
+  var info = $(aws cloudfront get-distribution \
+    --id "$CLOUDFRONT_DISTRIBUTION_ID" \
+    --output json)
+
+  json read (&info_dict) <<< $info
+
+  var dist = info_dict.Distribution
+  var domain = dist.DomainName
+  var status = dist.Status
+  var enabled = dist.DistributionConfig.Enabled
+
+  log "Distribution ID: $CLOUDFRONT_DISTRIBUTION_ID"
+  log "Domain:          $domain"
+  log "Status:          $status"
+  log "Enabled:         $enabled"
+  log ""
+
+  # Show origins
+  log "Origins:"
+  for origin in @[dist.DistributionConfig.Origins.Items] {
+    log "  - $[origin.Id]: $[origin.DomainName]"
+  }
+}
+
+proc update_distribution_alias (custom_domain, certificate_arn) {
+  # Update existing distribution with custom domain alias and ACM certificate
+  log_section "Updating CloudFront Distribution Alias"
+
+  get_cloudfront_distribution_id
+
+  if test -z "$CLOUDFRONT_DISTRIBUTION_ID" {
+    log "ERROR: No distribution found. Create one first."
+    exit 1
+  }
+
+  log "Distribution: $CLOUDFRONT_DISTRIBUTION_ID"
+  log "Custom domain: $custom_domain"
+  log "Certificate: $certificate_arn"
+
+  # Get current config and ETag
+  var current = $(aws cloudfront get-distribution-config \
+    --id "$CLOUDFRONT_DISTRIBUTION_ID" \
+    --output json)
+
+  json read (&current_dict) <<< $current
+  var etag = current_dict.ETag
+
+  # Check if alias already configured
+  var alias_count = $(echo "$current" | jq '.DistributionConfig.Aliases.Quantity')
+  if test "$alias_count" != "0" {
+    log "Aliases already configured, checking if update needed..."
+    var existing_alias = $(echo "$current" | jq -r '.DistributionConfig.Aliases.Items[0] // ""')
+    if test "$existing_alias" = "$custom_domain" {
+      log "Custom domain already configured, skipping"
+      return 0
+    }
+  }
+
+  # Update config with alias and ACM certificate
+  var updated_config = $(echo "$current" | jq \
+    --arg domain "$custom_domain" \
+    --arg cert_arn "$certificate_arn" \
+    '.DistributionConfig |
+     .Aliases = {Quantity: 1, Items: [$domain]} |
+     .ViewerCertificate = {
+       ACMCertificateArn: $cert_arn,
+       SSLSupportMethod: "sni-only",
+       MinimumProtocolVersion: "TLSv1.2_2021"
+     }')
+
+  var config_file = $(mktemp)
+  trap "rm -f $config_file" EXIT
+  echo "$updated_config" > $config_file
+
+  log "Updating distribution with custom domain..."
+  aws cloudfront update-distribution \
+    --id "$CLOUDFRONT_DISTRIBUTION_ID" \
+    --distribution-config "file://$config_file" \
+    --if-match "$etag"
+
+  log "Distribution update initiated"
+  wait_for_distribution_deployed "$CLOUDFRONT_DISTRIBUTION_ID"
+  log "Distribution updated with custom domain: $custom_domain"
+}
+
+proc disable_distribution {
+  # Disable distribution (required before deletion)
+  log_section "Disabling CloudFront Distribution"
+
+  get_cloudfront_distribution_id
+
+  if test -z "$CLOUDFRONT_DISTRIBUTION_ID" {
+    log "No distribution found"
+    return 0
+  }
+
+  log "Disabling distribution: $CLOUDFRONT_DISTRIBUTION_ID"
+
+  # Get current config and ETag
+  var current = $(aws cloudfront get-distribution-config \
+    --id "$CLOUDFRONT_DISTRIBUTION_ID" \
+    --output json)
+
+  json read (&current_dict) <<< $current
+
+  var etag = current_dict.ETag
+
+  # Update Enabled to false using jq
+  var config = $(echo "$current" | jq '.DistributionConfig | .Enabled = false')
+
+  var config_file = $(mktemp)
+  trap "rm -f $config_file" EXIT
+  echo "$config" > $config_file
+
+  aws cloudfront update-distribution \
+    --id "$CLOUDFRONT_DISTRIBUTION_ID" \
+    --distribution-config "file://$config_file" \
+    --if-match "$etag"
+
+  log "Distribution disabled. Waiting for deployment..."
+  wait_for_distribution_deployed "$CLOUDFRONT_DISTRIBUTION_ID"
+}
+
+proc delete_distribution {
+  # Delete CloudFront distribution (must be disabled first)
+  log_section "Deleting CloudFront Distribution"
+
+  get_cloudfront_distribution_id
+
+  if test -z "$CLOUDFRONT_DISTRIBUTION_ID" {
+    log "No distribution found"
+    return 0
+  }
+
+  # Check if enabled (use jq for reliable nested access)
+  var enabled = $(aws cloudfront get-distribution \
+    --id "$CLOUDFRONT_DISTRIBUTION_ID" \
+    --query 'Distribution.DistributionConfig.Enabled' \
+    --output text)
+
+  if test "$enabled" = "True" {
+    log "Distribution is still enabled. Disabling first..."
+    disable_distribution
+  }
+
+  # Get fresh ETag after disable
+  var current = $(aws cloudfront get-distribution \
+    --id "$CLOUDFRONT_DISTRIBUTION_ID" \
+    --output json)
+
+  json read (&current_dict) <<< $current
+  var etag = current_dict.ETag
+
+  log "Deleting distribution: $CLOUDFRONT_DISTRIBUTION_ID"
+
+  aws cloudfront delete-distribution \
+    --id "$CLOUDFRONT_DISTRIBUTION_ID" \
+    --if-match "$etag"
+
+  log "Distribution deleted"
+}
+
+# -----------------------------------------------------------------------------
+# CLI Interface
+# -----------------------------------------------------------------------------
+
+proc cloudfront_main {
+  require_commands aws jq
+
+  set_aws_region
+  ensure_aws_auth
+
+  var command = ${1:-info}
+  var bot_domain = ${2:-}
+
+  # Default to CONFIG.domain if not provided
+  if test -z "$bot_domain" {
+    setvar bot_domain = CONFIG.domain
+  }
+
+  case $command in
+    create)
+      create_distribution "$bot_domain"
+      ;;
+    update)
+      update_distribution_origins "$bot_domain"
+      ;;
+    info)
+      get_distribution_info
+      ;;
+    disable)
+      disable_distribution
+      ;;
+    delete)
+      delete_distribution
+      ;;
+    *)
+      echo "Usage: cloudfront.ysh <command> [args]"
+      echo ""
+      echo "Commands:"
+      echo "  create [bot_domain]  Create distribution with dual origins"
+      echo "  update [bot_domain]  Update bot origin domain"
+      echo "  info                 Show distribution status"
+      echo "  disable              Disable distribution"
+      echo "  delete               Delete distribution"
+      ;;
+  esac
+}
+
+# -----------------------------------------------------------------------------
+# Entry Point
+# -----------------------------------------------------------------------------
+
+if is-main {
+  cloudfront_main @ARGV
+}

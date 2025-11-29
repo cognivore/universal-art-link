@@ -3,20 +3,39 @@ import path from 'node:path';
 import { buildSite } from '../lib/build.js';
 import { log } from '../lib/logger.js';
 import { createPathConfig } from '../lib/paths.js';
-import { startDevServer, type AdminRuntimeConfig } from '../lib/devServer.js';
+import { startDevServer, type AdminRuntimeConfig, type StripeServerConfig } from '../lib/devServer.js';
 import { AdminService } from '../lib/adminService.js';
 import { buildAdminFrontend, startAdminWatcher } from '../lib/adminFrontend.js';
+import type { StripeMode } from '../types/stripe-commerce.js';
 
 type DevOptions = {
   readonly port?: number;
   readonly strapiUrl?: string;
+  readonly singleTenantStripe?: boolean;
+  readonly stripeMode?: StripeMode;
 };
 
-export const runDevCommand = async ({ port = 4173, strapiUrl }: DevOptions = {}): Promise<void> => {
+export const runDevCommand = async ({
+  port = 4173,
+  strapiUrl,
+  singleTenantStripe = false,
+  stripeMode = 'staging',
+}: DevOptions = {}): Promise<void> => {
   const rootDir = process.cwd();
   const paths = createPathConfig(rootDir);
 
   const resolvedStrapiUrl = strapiUrl ?? process.env.UAL_STRAPI_URL ?? 'http://localhost:1337';
+
+  // Check for env override for Stripe mode
+  const envStripeEnabled = process.env.UAL_SINGLE_TENANT_STRIPE === 'true';
+  const envStripeMode = process.env.UAL_STRIPE_MODE as StripeMode | undefined;
+  const effectiveStripeEnabled = singleTenantStripe || envStripeEnabled;
+  const effectiveStripeMode = envStripeMode ?? stripeMode;
+
+  if (effectiveStripeEnabled) {
+    log.info(`[dev] Single-tenant Stripe mode enabled (${effectiveStripeMode})`);
+    log.info('[dev] Authentication required for /admin access');
+  }
 
   await buildAdminFrontend(paths, log);
   const adminWatcher = await startAdminWatcher(paths, log);
@@ -31,7 +50,13 @@ export const runDevCommand = async ({ port = 4173, strapiUrl }: DevOptions = {})
     adminBaseUrl: `http://localhost:${port}/admin`,
     strapiUrl: resolvedStrapiUrl,
     previewPaths: buildResult.previewPaths,
+    singleTenantStripe: effectiveStripeEnabled,
+    stripeMode: effectiveStripeEnabled ? effectiveStripeMode : undefined,
   };
+
+  const stripeConfig: StripeServerConfig | undefined = effectiveStripeEnabled
+    ? { enabled: true, mode: effectiveStripeMode }
+    : undefined;
 
   const server = startDevServer({
     distDir: paths.outputDir,
@@ -41,6 +66,7 @@ export const runDevCommand = async ({ port = 4173, strapiUrl }: DevOptions = {})
     adminService,
     paths,
     runtimeConfig,
+    stripeConfig,
   });
 
   const watcher = chokidar.watch(

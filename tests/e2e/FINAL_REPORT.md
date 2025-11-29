@@ -169,3 +169,8 @@ The system successfully delivers:
 4. Intuitive three-tab workflow (Page details | Sections | Edit post)
 5. Reusable block builder for text, images, quotes, and embeds
 
+
+
+
+
+
