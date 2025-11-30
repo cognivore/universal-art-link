@@ -43,7 +43,13 @@ import { createAuthGuard, type AuthenticatedRequest } from './authMiddleware.js'
 import { createEmailService, createEmailConfig, type EmailService } from './emailService.js';
 import { createStripeSyncService, type StripeSyncService } from './stripeSyncService.js';
 import { createSyncCron, type SyncCron } from './syncCron.js';
-import { createPromotionService, createProductionPathConfig, type PromotionService } from './promotionService.js';
+import {
+  createPromotionService,
+  createProductionPathConfig,
+  verifyWebhookSignature,
+  type PromotionService,
+  type PromotionWebhookConfig,
+} from './promotionService.js';
 import { createStripeConfig, getStripePublicConfig, validateStripeConfig } from './stripeConfig.js';
 import { createStripeService, type StripeService } from './stripeService.js';
 import {
@@ -1138,7 +1144,7 @@ const handleSnapshotsApi = async (
       const body = await readJsonBody(req);
       const name = String(body.name ?? `Snapshot ${new Date().toISOString()}`);
       const id = `snap_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      
+
       const snapshotsDir = await ensureSnapshotsDir(paths);
       const snapshotDir = path.join(snapshotsDir, id);
       await fs.ensureDir(snapshotDir);
@@ -1178,7 +1184,7 @@ const handleSnapshotsApi = async (
       const snapshotId = segments[0] ?? '';
       const index = await loadSnapshotsIndex(paths);
       const snapshot = index.snapshots.find(s => s.id === snapshotId);
-      
+
       if (!snapshot) {
         respondJson(res, 404, { error: 'Snapshot not found' });
         return true;
@@ -1186,7 +1192,7 @@ const handleSnapshotsApi = async (
 
       const snapshotsDir = await ensureSnapshotsDir(paths);
       const snapshotDir = path.join(snapshotsDir, snapshotId);
-      
+
       if (!await fs.pathExists(snapshotDir)) {
         respondJson(res, 404, { error: 'Snapshot data not found' });
         return true;
@@ -1213,12 +1219,39 @@ const handleSnapshotsApi = async (
       return true;
     }
 
+    // PATCH /__ual/api/admin/snapshots/:id - Rename a snapshot
+    if (segments.length === 1 && method === 'PATCH') {
+      const snapshotId = segments[0] ?? '';
+      const body = await readJsonBody(req);
+      const newName = String(body.name ?? '').trim();
+
+      if (!newName) {
+        respondJson(res, 400, { error: 'Name is required' });
+        return true;
+      }
+
+      const index = await loadSnapshotsIndex(paths);
+      const snapshot = index.snapshots.find(s => s.id === snapshotId);
+
+      if (!snapshot) {
+        respondJson(res, 404, { error: 'Snapshot not found' });
+        return true;
+      }
+
+      snapshot.name = newName;
+      await saveSnapshotsIndex(paths, index);
+
+      logger.info(`[snapshots] Renamed snapshot ${snapshotId} to "${newName}" by ${req.user.sub}`);
+      respondJson(res, 200, { snapshot });
+      return true;
+    }
+
     // DELETE /__ual/api/admin/snapshots/:id - Delete a snapshot
     if (segments.length === 1 && method === 'DELETE') {
       const snapshotId = segments[0] ?? '';
       const index = await loadSnapshotsIndex(paths);
       const snapshotIdx = index.snapshots.findIndex(s => s.id === snapshotId);
-      
+
       if (snapshotIdx === -1) {
         respondJson(res, 404, { error: 'Snapshot not found' });
         return true;
@@ -1608,7 +1641,17 @@ export const startDevServer = ({
         }
       }
 
-      promotionService = createPromotionService(paths, productionPaths, liveSyncService, logger);
+      // Create webhook config for staging to call production
+      let webhookConfig: PromotionWebhookConfig | undefined;
+      const productionUrl = process.env.UAL_PRODUCTION_URL;
+      const promotionSecret = process.env.UAL_PROMOTION_SECRET;
+
+      if (productionUrl && promotionSecret && stripeConfig?.mode === 'staging') {
+        webhookConfig = { productionUrl, promotionSecret };
+        logger.info(`[devserver] Promotion webhook configured for ${productionUrl}`);
+      }
+
+      promotionService = createPromotionService(paths, productionPaths, liveSyncService, logger, webhookConfig);
       logger.info('[devserver] Promotion service initialized');
     } catch (error) {
       logger.error('[devserver] Failed to initialize Stripe:', error);
@@ -1633,6 +1676,136 @@ export const startDevServer = ({
     if (requestUrl.pathname === '/__ual/santa-status') {
       respondJson(res, 200, { enabled: isStagingBypassEnabled() });
       return;
+    }
+
+    // Promotion webhook (called by staging to trigger Stripe export on production)
+    if (requestUrl.pathname === '/__ual/webhook/promotion' && req.method === 'POST') {
+      const promotionSecret = process.env.UAL_PROMOTION_SECRET;
+
+      if (!promotionSecret) {
+        logger.warn('[webhook] Promotion webhook called but UAL_PROMOTION_SECRET not set');
+        respondJson(res, 503, { error: 'Promotion webhook not configured' });
+        return;
+      }
+
+      try {
+        const body = await readJsonBody(req);
+        const bodyStr = JSON.stringify(body);
+        const signature = req.headers['x-ual-signature'] as string;
+        const timestamp = req.headers['x-ual-timestamp'] as string;
+
+        if (!signature || !timestamp) {
+          respondJson(res, 401, { error: 'Missing signature or timestamp' });
+          return;
+        }
+
+        // Verify signature
+        const expectedPayload = JSON.stringify({ timestamp, action: 'promote-products' });
+        if (!verifyWebhookSignature(expectedPayload, signature, promotionSecret)) {
+          logger.warn('[webhook] Invalid promotion webhook signature');
+          respondJson(res, 401, { error: 'Invalid signature' });
+          return;
+        }
+
+        // Check timestamp is recent (within 5 minutes)
+        const ts = parseInt(timestamp, 10);
+        const now = Date.now();
+        if (Math.abs(now - ts) > 5 * 60 * 1000) {
+          respondJson(res, 401, { error: 'Timestamp too old' });
+          return;
+        }
+
+        logger.info('[webhook] Promotion webhook triggered');
+
+        // Step 1: Create a snapshot before importing
+        const snapshotName = `staging-import-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}`;
+        const snapshotId = `snap_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+        const snapshotsDir = path.join(paths.rootDir, '.ual/snapshots');
+        const snapshotDir = path.join(snapshotsDir, snapshotId);
+        await fs.ensureDir(snapshotDir);
+
+        // Copy current content and assets to snapshot
+        await fs.copy(paths.contentDir, path.join(snapshotDir, 'content'));
+        await fs.copy(paths.assetsDir, path.join(snapshotDir, 'assets'));
+
+        // Calculate size
+        const calculateDirSize = async (dirPath: string): Promise<number> => {
+          let total = 0;
+          try {
+            const entries = await fs.readdir(dirPath, { withFileTypes: true });
+            for (const entry of entries) {
+              const entryPath = path.join(dirPath, entry.name);
+              if (entry.isDirectory()) {
+                total += await calculateDirSize(entryPath);
+              } else {
+                const stat = await fs.stat(entryPath);
+                total += stat.size;
+              }
+            }
+          } catch {
+            // Directory doesn't exist
+          }
+          return total;
+        };
+
+        const size = await calculateDirSize(snapshotDir);
+
+        // Update snapshots index
+        const indexPath = path.join(snapshotsDir, 'index.json');
+        let index: { snapshots: Array<{ id: string; name: string; createdAt: string; createdBy: string; size: number }> } = { snapshots: [] };
+        try {
+          const content = await fs.readFile(indexPath, 'utf8');
+          index = JSON.parse(content);
+        } catch {
+          // No existing index
+        }
+
+        index.snapshots.unshift({
+          id: snapshotId,
+          name: snapshotName,
+          createdAt: new Date().toISOString(),
+          createdBy: 'staging-webhook',
+          size,
+        });
+
+        await fs.writeFile(indexPath, JSON.stringify(index, null, 2));
+        logger.info(`[webhook] Created snapshot: ${snapshotName} (${snapshotId})`);
+
+        // Step 2: Export products to Stripe live mode
+        let stripeSync = null;
+        let stripeMessage = 'Stripe sync not available';
+
+        if (stripeSyncService) {
+          try {
+            const syncResult = await stripeSyncService.exportAllToStripe();
+            stripeSync = syncResult;
+            const hasErrors = syncResult.errors.length > 0;
+            stripeMessage = hasErrors
+              ? `Exported ${syncResult.exported} products with ${syncResult.errors.length} errors`
+              : `Exported ${syncResult.exported} products to Stripe (${syncResult.skipped} already synced)`;
+            logger.info(`[webhook] ${stripeMessage}`);
+          } catch (error) {
+            const errMsg = error instanceof Error ? error.message : 'Unknown error';
+            stripeMessage = `Stripe export failed: ${errMsg}`;
+            logger.error(`[webhook] ${stripeMessage}`);
+          }
+        }
+
+        respondJson(res, 200, {
+          success: true,
+          message: `Snapshot created and ${stripeMessage}`,
+          snapshotId,
+          snapshotName,
+          stripeSync,
+        });
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Webhook failed';
+        logger.error('[webhook] Promotion webhook error:', error);
+        respondJson(res, 500, { error: message });
+        return;
+      }
     }
 
     if (requestUrl.pathname === '/__ual/runtime' && req.method === 'GET') {

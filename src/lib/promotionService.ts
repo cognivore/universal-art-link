@@ -5,14 +5,20 @@
  * This includes:
  * - Copying content YAML files (pages, products, commerce config)
  * - Copying assets directory
- * - Exporting products to Stripe live mode
+ * - Calling production webhook to export products to Stripe live mode
  *
  * IMPORTANT: This service is designed to run on the deployment server
  * where both staging and production directories exist.
+ *
+ * The Stripe export is done via a webhook to production because:
+ * - Staging only has test Stripe keys
+ * - Production has live Stripe keys
+ * - The webhook creates a snapshot before importing
  */
 
 import fs from 'fs-extra';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import type { PathConfig } from './paths.js';
 import type { StripeSyncService, SyncResult } from './stripeSyncService.js';
 import type { Logger } from './logger.js';
@@ -41,6 +47,30 @@ export type PromotionService = {
   readonly checkEnvironment: () => Promise<{ valid: boolean; message: string }>;
 };
 
+export type PromotionWebhookConfig = {
+  readonly productionUrl: string;
+  readonly promotionSecret: string;
+};
+
+/**
+ * Generate HMAC signature for webhook authentication
+ */
+const signWebhookPayload = (payload: string, secret: string): string => {
+  return crypto.createHmac('sha256', secret).update(payload).digest('hex');
+};
+
+/**
+ * Verify HMAC signature from webhook request
+ */
+export const verifyWebhookSignature = (
+  payload: string,
+  signature: string,
+  secret: string,
+): boolean => {
+  const expected = signWebhookPayload(payload, secret);
+  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+};
+
 /**
  * Files and directories to copy during content promotion
  */
@@ -64,14 +94,16 @@ const EXCLUDED_FILES = [
  *
  * @param stagingPaths - Path configuration for staging environment
  * @param productionPaths - Path configuration for production environment
- * @param liveSyncService - Stripe sync service configured for live mode (optional)
+ * @param liveSyncService - Stripe sync service configured for live mode (optional, only on production)
  * @param logger - Logger instance
+ * @param webhookConfig - Config for calling production webhook (only on staging)
  */
 export const createPromotionService = (
   stagingPaths: PathConfig,
   productionPaths: PathConfig,
   liveSyncService: StripeSyncService | null,
   logger: Logger,
+  webhookConfig?: PromotionWebhookConfig,
 ): PromotionService => {
   /**
    * Check if the promotion environment is valid (both directories exist)
@@ -202,45 +234,101 @@ export const createPromotionService = (
 
   /**
    * Export products to Stripe live mode.
-   * This creates Stripe products for any local products that don't have stripeProductId yet.
+   *
+   * If running on staging (webhookConfig provided), calls production webhook.
+   * If running on production (liveSyncService provided), exports directly.
    */
   const promoteProducts = async (): Promise<PromotionStepResult & { stripeSync?: SyncResult }> => {
-    if (!liveSyncService) {
-      return {
-        step: 'products',
-        success: true,
-        message: 'Stripe sync not configured - skipping product export',
-      };
+    // If we have webhook config, we're on staging - call production webhook
+    if (webhookConfig) {
+      try {
+        logger.info('[promotion] Calling production webhook for Stripe live export...');
+
+        const timestamp = Date.now().toString();
+        const payload = JSON.stringify({ timestamp, action: 'promote-products' });
+        const signature = signWebhookPayload(payload, webhookConfig.promotionSecret);
+
+        const response = await fetch(`${webhookConfig.productionUrl}/__ual/webhook/promotion`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-UAL-Signature': signature,
+            'X-UAL-Timestamp': timestamp,
+          },
+          body: payload,
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Production webhook failed: ${response.status} ${errorText}`);
+        }
+
+        const result = await response.json() as {
+          success: boolean;
+          message: string;
+          snapshotId?: string;
+          stripeSync?: SyncResult;
+        };
+
+        logger.info(`[promotion] Production webhook response: ${result.message}`);
+
+        return {
+          step: 'products',
+          success: result.success,
+          message: result.message,
+          details: result.snapshotId ? [`Snapshot created: ${result.snapshotId}`] : undefined,
+          stripeSync: result.stripeSync,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        logger.error(`[promotion] Production webhook failed: ${message}`);
+
+        return {
+          step: 'products',
+          success: false,
+          message: `Production webhook failed: ${message}`,
+        };
+      }
     }
 
-    try {
-      logger.info('[promotion] Exporting products to Stripe live mode...');
-      const syncResult = await liveSyncService.exportAllToStripe();
+    // If we have liveSyncService, we're on production - export directly
+    if (liveSyncService) {
+      try {
+        logger.info('[promotion] Exporting products to Stripe live mode...');
+        const syncResult = await liveSyncService.exportAllToStripe();
 
-      const hasErrors = syncResult.errors.length > 0;
-      const message = hasErrors
-        ? `Exported ${syncResult.exported} products with ${syncResult.errors.length} errors`
-        : `Exported ${syncResult.exported} products to Stripe (${syncResult.skipped} already synced)`;
+        const hasErrors = syncResult.errors.length > 0;
+        const message = hasErrors
+          ? `Exported ${syncResult.exported} products with ${syncResult.errors.length} errors`
+          : `Exported ${syncResult.exported} products to Stripe (${syncResult.skipped} already synced)`;
 
-      logger.info(`[promotion] ${message}`);
+        logger.info(`[promotion] ${message}`);
 
-      return {
-        step: 'products',
-        success: !hasErrors,
-        message,
-        details: syncResult.errors.map((e) => e.message),
-        stripeSync: syncResult,
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      logger.error(`[promotion] Product export failed: ${message}`);
+        return {
+          step: 'products',
+          success: !hasErrors,
+          message,
+          details: syncResult.errors.map((e) => e.message),
+          stripeSync: syncResult,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        logger.error(`[promotion] Product export failed: ${message}`);
 
-      return {
-        step: 'products',
-        success: false,
-        message: `Product export failed: ${message}`,
-      };
+        return {
+          step: 'products',
+          success: false,
+          message: `Product export failed: ${message}`,
+        };
+      }
     }
+
+    // Neither webhook nor sync service - can't export
+    return {
+      step: 'products',
+      success: true,
+      message: 'Stripe sync not configured - skipping product export',
+    };
   };
 
   /**

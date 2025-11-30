@@ -61,7 +61,7 @@ export const SnapshotsPanel = () => {
 
   const handleCreate = async () => {
     const name = snapshotName.trim() || `Snapshot ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
-    
+
     if (!window.confirm(`Create snapshot "${name}"?\n\nThis will save the current state of all content and assets.`)) {
       return;
     }
@@ -133,6 +133,30 @@ export const SnapshotsPanel = () => {
       await loadSnapshots();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete snapshot');
+    }
+  };
+
+  const handleRename = async (snapshot: Snapshot) => {
+    const newName = window.prompt('Enter new name for snapshot:', snapshot.name);
+    if (!newName || newName.trim() === snapshot.name) {
+      return;
+    }
+
+    try {
+      setError(null);
+      const response = await fetch(`${config.apiBaseUrl}/admin/snapshots/${snapshot.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: newName.trim() }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to rename snapshot');
+      }
+      await loadSnapshots();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to rename snapshot');
     }
   };
 
@@ -223,6 +247,14 @@ export const SnapshotsPanel = () => {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRename(snapshot)}
+                      disabled={isLoading}
+                    >
+                      Rename
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"

@@ -41,6 +41,10 @@ UAL_ADMIN_EMAILS=${UAL_ADMIN_EMAILS:-}
 
 # Base URL for admin frontend
 UAL_BASE_URL=https://$STAGING_DOMAIN
+
+# Production webhook (for Stripe live export after promotion)
+UAL_PRODUCTION_URL=https://$PROD_DOMAIN
+UAL_PROMOTION_SECRET=${UAL_PROMOTION_SECRET:-}
 EOF
 }
 
@@ -72,6 +76,9 @@ UAL_ADMIN_EMAILS=${UAL_ADMIN_EMAILS:-}
 
 # Base URL for admin frontend
 UAL_BASE_URL=https://$PROD_DOMAIN
+
+# Promotion webhook secret (shared with staging)
+UAL_PROMOTION_SECRET=${UAL_PROMOTION_SECRET:-}
 EOF
 }
 
@@ -151,6 +158,12 @@ proc generate_staging_jwt {
   if test -z "${UAL_MAGIC_LINK_SECRET:-}" {
     export UAL_MAGIC_LINK_SECRET=$(openssl rand -hex 32)
     log "Generated new UAL_MAGIC_LINK_SECRET"
+  }
+
+  # Generate promotion secret if not set (shared between staging and production)
+  if test -z "${UAL_PROMOTION_SECRET:-}" {
+    export UAL_PROMOTION_SECRET=$(openssl rand -hex 32)
+    log "Generated new UAL_PROMOTION_SECRET"
   }
 
   # Generate the staging JWT using Node.js
