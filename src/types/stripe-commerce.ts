@@ -66,6 +66,7 @@ export const CheckoutSessionRequestSchema = z.object({
   successUrl: z.string().url().optional(),
   cancelUrl: z.string().url().optional(),
   customerEmail: z.string().email().optional(),
+  testInvocationId: z.string().min(4).max(64).optional(),
 });
 
 export type CheckoutSessionRequest = z.infer<typeof CheckoutSessionRequestSchema>;

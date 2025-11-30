@@ -600,6 +600,59 @@ const handleStripeApi = async (
       }
     }
 
+    // GET /__ual/api/stripe/verify-product/:stripeProductId - Verify product exists in Stripe
+    if (segments[0] === 'verify-product' && segments.length === 2 && method === 'GET') {
+      if (!req.user) {
+        respondJson(res, 401, { error: 'Authentication required' });
+        return true;
+      }
+      const stripeProductId = segments[1]!;
+      try {
+        const product = await stripeService.retrieveProduct(stripeProductId);
+        respondJson(res, 200, {
+          id: product.id,
+          name: product.name,
+          active: product.active,
+          images: product.images,
+          metadata: product.metadata,
+        });
+      } catch (error) {
+        logger.error('[stripe] verify-product failed', error);
+        respondJson(res, 404, { error: 'Stripe product not found' });
+      }
+      return true;
+    }
+
+    // GET /__ual/api/stripe/verify-session/:sessionId - Verify checkout session exists in Stripe
+    if (segments[0] === 'verify-session' && segments.length === 2 && method === 'GET') {
+      if (!req.user) {
+        respondJson(res, 401, { error: 'Authentication required' });
+        return true;
+      }
+      const sessionId = segments[1]!;
+      try {
+        const session = await stripeService.retrieveSession(sessionId);
+        respondJson(res, 200, {
+          id: session.id,
+          url: session.url,
+          status: session.status,
+          paymentStatus: session.payment_status,
+          metadata: session.metadata,
+          amountTotal: session.amount_total,
+          currency: session.currency,
+          lineItems: session.line_items?.data.map((item) => ({
+            description: item.description,
+            price: item.price?.id,
+            product: typeof item.price?.product === 'string' ? item.price?.product : item.price?.product?.id,
+          })),
+        });
+      } catch (error) {
+        logger.error('[stripe] verify-session failed', error);
+        respondJson(res, 404, { error: 'Stripe session not found' });
+      }
+      return true;
+    }
+
     // GET /__ual/api/stripe/orders - List checkout sessions from Stripe (requires auth)
     if (segments[0] === 'orders' && segments.length === 1 && method === 'GET') {
       if (!req.user) {

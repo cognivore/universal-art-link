@@ -26,6 +26,7 @@ export type StripeService = {
   readonly retrieveSession: (sessionId: string) => Promise<Stripe.Checkout.Session>;
   readonly retrieveSubscription: (subscriptionId: string) => Promise<Stripe.Subscription>;
   readonly cancelSubscription: (subscriptionId: string) => Promise<Stripe.Subscription>;
+  readonly retrieveProduct: (productId: string) => Promise<Stripe.Product>;
   readonly getPublishableKey: () => string;
   readonly listCheckoutSessions: (options?: { limit?: number }) => Promise<StripeCheckoutSession[]>;
 };
@@ -41,29 +42,46 @@ export const createStripeService = (config: StripeConfig): StripeService => {
     request: CheckoutSessionRequest,
     urls: { success: string; cancel: string },
   ): Promise<CheckoutSessionResponse> => {
-    const lineItem: Stripe.Checkout.SessionCreateParams.LineItem = {
-      price_data: {
-        currency: product.currency.toLowerCase(),
-        unit_amount: product.priceAmountCents,
-        product_data: {
-          name: product.name,
-          description: product.description || undefined,
-          images: product.imageUrl ? [product.imageUrl] : undefined,
-          metadata: {
-            ual_product_id: product.id,
+    let lineItem: Stripe.Checkout.SessionCreateParams.LineItem;
+
+    if (product.stripeProductId && product.stripePriceId) {
+      lineItem = {
+        price: product.stripePriceId,
+        quantity: request.quantity,
+      };
+    } else {
+      lineItem = {
+        price_data: {
+          currency: product.currency.toLowerCase(),
+          unit_amount: product.priceAmountCents,
+          product_data: {
+            name: product.name,
+            description: product.description || undefined,
+            images: product.imageUrl ? [product.imageUrl] : undefined,
+            metadata: {
+              ual_product_id: product.id,
+            },
           },
+          ...(product.type === 'subscription' && product.interval
+            ? {
+                recurring: {
+                  interval: product.interval,
+                  interval_count: product.intervalCount ?? 1,
+                },
+              }
+            : {}),
         },
-        ...(product.type === 'subscription' && product.interval
-          ? {
-              recurring: {
-                interval: product.interval,
-                interval_count: product.intervalCount ?? 1,
-              },
-            }
-          : {}),
-      },
-      quantity: request.quantity,
+        quantity: request.quantity,
+      };
+    }
+
+    const sessionMetadata: Record<string, string> = {
+      ual_product_id: product.id,
+      ual_product_name: product.name,
     };
+    if (request.testInvocationId) {
+      sessionMetadata.test_invocation_id = request.testInvocationId;
+    }
 
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: product.type === 'subscription' ? 'subscription' : 'payment',
@@ -72,10 +90,7 @@ export const createStripeService = (config: StripeConfig): StripeService => {
       cancel_url: urls.cancel,
       payment_method_types: ['card', 'link'],
       billing_address_collection: 'auto',
-      metadata: {
-        ual_product_id: product.id,
-        ual_product_name: product.name,
-      },
+      metadata: sessionMetadata,
     };
 
     if (request.customerEmail) {
@@ -112,6 +127,9 @@ export const createStripeService = (config: StripeConfig): StripeService => {
   const cancelSubscription = async (subscriptionId: string): Promise<Stripe.Subscription> =>
     stripe.subscriptions.cancel(subscriptionId);
 
+  const retrieveProduct = async (productId: string): Promise<Stripe.Product> =>
+    stripe.products.retrieve(productId);
+
   const getPublishableKey = (): string => config.publishableKey;
 
   const listCheckoutSessions = async (
@@ -144,6 +162,7 @@ export const createStripeService = (config: StripeConfig): StripeService => {
     retrieveSession,
     retrieveSubscription,
     cancelSubscription,
+    retrieveProduct,
     getPublishableKey,
     listCheckoutSessions,
   };

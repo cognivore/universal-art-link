@@ -266,6 +266,7 @@ export const createStripeSyncService = (
       active: product.isActive,
       metadata: {
         ual_product_id: product.id,
+        ...(product.metadata ?? {}),
       },
     });
 
