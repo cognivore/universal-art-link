@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
@@ -54,24 +54,23 @@ export const PromotionPanel = () => {
   const [result, setResult] = useState<PromotionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const config = getRuntimeConfig();
-
-  const runCheck = useCallback(async () => {
-    try {
-      setState('checking');
-      setError(null);
-      const checkResult = await checkPromotion(config);
-      setCheck(checkResult);
-      setState('idle');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to check promotion status');
-      setState('error');
-    }
-  }, [config]);
-
+  // Check promotion status once on mount
   useEffect(() => {
+    const runCheck = async () => {
+      try {
+        setState('checking');
+        setError(null);
+        const config = getRuntimeConfig();
+        const checkResult = await checkPromotion(config);
+        setCheck(checkResult);
+        setState('idle');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to check promotion status');
+        setState('error');
+      }
+    };
     void runCheck();
-  }, [runCheck]);
+  }, []); // Empty deps = run once on mount
 
   const handlePromote = async () => {
     if (!window.confirm(
@@ -89,6 +88,7 @@ export const PromotionPanel = () => {
       setState('promoting');
       setError(null);
       setResult(null);
+      const config = getRuntimeConfig();
       const promotionResult = await promoteAll(config);
       setResult(promotionResult);
       setState('done');
