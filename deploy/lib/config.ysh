@@ -34,8 +34,8 @@ const BASE_CONFIG = {
   dns_timeout_seconds: 600,
   dns_poll_interval: 10,
 
-  # Git repo
-  repo_url: 'https://github.com/user/universal-artistic-link.git',
+  # Git repo (override with UAL_REPO_URL env var)
+  repo_url: 'https://github.com/cognivore/universal-art-link.git',
   repo_branch: 'main',
 }
 
@@ -97,6 +97,14 @@ proc set_config_from_env {
     var name_config
     json read (&name_config) <<< $name_updated
     setglobal CONFIG = name_config
+  }
+
+  if test -n "${UAL_REPO_URL:-}" {
+    var repo_json = $(json write (CONFIG))
+    var repo_updated = $(echo "$repo_json" | jq --arg url "$UAL_REPO_URL" '.repo_url = $url')
+    var repo_config
+    json read (&repo_config) <<< $repo_updated
+    setglobal CONFIG = repo_config
   }
 
   compute_domains

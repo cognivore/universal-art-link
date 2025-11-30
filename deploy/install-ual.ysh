@@ -194,6 +194,12 @@ proc install_ual {
   var repo_url = CONFIG.repo_url
   var repo_branch = CONFIG.repo_branch
 
+  # If GitHub token is available, embed it in the URL for private repo access
+  if test -n "${GITHUB_TOKEN:-}" {
+    log "Using GitHub token for private repo access..."
+    setvar repo_url = $(echo "$repo_url" | sed "s|https://|https://${GITHUB_TOKEN}@|")
+  }
+
   log "Cloning repository and setting up services..."
 
   ssh_exec "$SERVER_IP" "

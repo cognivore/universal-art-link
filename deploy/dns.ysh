@@ -89,7 +89,7 @@ proc dns_create_a_record (subdomain, ip) {
     # For apex domain, we need to retrieve and delete conflicting records
     # ALIAS records conflict with A records - must delete them first!
     var records_response = $(porkbun_request "/dns/retrieve/$domain" "$auth_payload")
-    
+
     # Delete any existing A records at apex
     var apex_a_ids = $(echo "$records_response" | jq -r --arg d "$domain" '.records[] | select(.type == "A" and .name == $d) | .id')
     for record_id in $apex_a_ids {
@@ -98,7 +98,7 @@ proc dns_create_a_record (subdomain, ip) {
         porkbun_request "/dns/delete/$domain/$record_id" "$auth_payload" > /dev/null 2>&1
       }
     }
-    
+
     # Delete any ALIAS records at apex - they conflict with A records!
     var apex_alias_ids = $(echo "$records_response" | jq -r --arg d "$domain" '.records[] | select(.type == "ALIAS" and .name == $d) | .id')
     for record_id in $apex_alias_ids {
@@ -107,7 +107,7 @@ proc dns_create_a_record (subdomain, ip) {
         porkbun_request "/dns/delete/$domain/$record_id" "$auth_payload" > /dev/null 2>&1
       }
     }
-    
+
     if test -z "$apex_a_ids" && test -z "$apex_alias_ids" {
       log "No conflicting apex records found"
     }

@@ -225,7 +225,7 @@ const ProductPanel = ({
                   <Badge variant={product.type === 'subscription' ? 'default' : 'outline'}>
                     {product.type === 'subscription' ? 'Subscription' : 'One-time'}
                   </Badge>
-                  <Badge variant={product.isActive ? 'default' : 'secondary'}>
+                  <Badge variant={product.isActive ? 'success' : 'outline'}>
                     {product.isActive ? 'Active' : 'Hidden'}
                   </Badge>
                 </div>
