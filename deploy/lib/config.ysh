@@ -161,7 +161,7 @@ proc load_env_file {
     log "Loading environment from .env file..."
     # Parse .env and set each variable as a shell variable
     # Filter to only UAL-related variables
-    var env_vars = $(bash -c "set -a; source '$env_file' 2>/dev/null; env" | grep -E '^(HETZNER_|PORKBUN_|UAL_|STRIPE_)')
+    var env_vars = $(bash -c "set -a; source '$env_file' 2>/dev/null; env" | grep -E '^(HETZNER_|PORKBUN_|UAL_|STRIPE_|RESEND_|EMAIL_|GITHUB_)')
 
     # Set each variable using eval with proper quoting
     for line in @(echo "$env_vars") {
