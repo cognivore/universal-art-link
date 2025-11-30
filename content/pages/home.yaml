@@ -1,75 +1,83 @@
+# Home Page for Japanese Pastry Chef & Educator
+# Inspired by: Kaori Ishibashi, Fumiko Kono, Niki Nakayama, Sadaharu Aoki
+
 slug: /
-title: Atelier Meridian
-description: Cargo-style high fashion art direction for future-forward studios.
+title: "[Your Name] — Japanese Pastry & Wagashi"
+description: "[Brief meta description for search engines: e.g., 'Learn traditional Japanese pastry-making through hands-on workshops. Order seasonal wagashi and Japanese baked goods online.']"
 layout: default
+
 sections:
   - type: hero
-    eyebrow: Transmedia practice
-    kicker: Atelier Meridian
-    title: Editorial-grade digital narratives for ambitious cultural work.
-    subtitle: We choreograph typography, motion, and imagery into precise compositions—delivering tactile online spaces for galleries, collectives, and couture studios.
-    body: Local-first builder prototype showcasing a Cargo-style editorial stack.
+    eyebrow: "[Your location or defining phrase, e.g., 'Oakland-based pastry chef' or 'Traditional techniques, modern kitchen']"
+    kicker: "[Your Name]"
+    title: "[Your primary headline — what transformation do you offer? e.g., 'Teaching the quiet art of Japanese pastry, one fold at a time.']"
+    subtitle: "[Expand on your unique value: What makes your teaching special? What will students gain? e.g., 'Intimate workshops exploring wagashi, Japanese bakery classics, and the seasonal rhythms that shape each creation. For home bakers ready to slow down and work with intention.']"
+    body: "[Optional: A brief personal note or philosophy statement that sets the tone for your practice.]"
     media:
       src: /assets/hero-still.svg
-      alt: Collage of typography and textiles
+      alt: "[Describe the hero image: e.g., 'Hands shaping nerikiri wagashi' or 'Freshly baked melon pan on a cooling rack']"
       focalPoint: center
     primaryCta:
-      label: View Work
-      href: /work
+      label: Explore Classes
+      href: /classes
     secondaryCta:
-      label: Journal Notes
-      href: /journal
+      label: Shop Pastries
+      href: /shop
+
   - type: projects-grid
-    title: Recent work
-    intro: Each commission is built as a modular editorial system—responsive without diluting the composition.
+    title: Current Offerings
+    intro: "[Describe what students can expect from your classes: e.g., 'Small-group workshops designed for focused learning. Each class includes recipes, technique breakdowns, and pastries to take home.']"
     projects:
-      - title: Orbit Season 04
-        role: Art Direction
-        year: "2024"
+      - title: "[Signature Class Name, e.g., 'Foundations of Wagashi']"
+        role: "[Class type, e.g., 'Hands-on Workshop']"
+        year: "[Season or ongoing, e.g., 'Spring 2026']"
         coverImage:
           src: /assets/project-orbit.svg
-          alt: Orbit cover collage
+          alt: "[Describe: e.g., 'Seasonal wagashi arranged on a ceramic plate']"
           focalPoint: center
-        slug: /project-orbit
+        slug: /foundations-of-wagashi
         span: wide
-      - title: Dawn Textile Lab
-        role: Interactive Lookbook
-        year: "2023"
+      - title: "[Second Class, e.g., 'Japanese Bakery Essentials']"
+        role: "[Class type, e.g., '3-Session Series']"
+        year: "[Season, e.g., 'Ongoing']"
         coverImage:
           src: /assets/project-dawn.svg
-          alt: Textile macro photography
-        url: https://dawn-lab.example
+          alt: "[Describe: e.g., 'Shokupan loaf with golden crust']"
+        slug: /classes#bakery-essentials
         span: standard
-      - title: Resonant Cartographies
-        role: Speculative Archive
-        year: "2024"
+      - title: "[Third Offering, e.g., 'Private Lessons']"
+        role: "[Type, e.g., 'One-on-One Instruction']"
+        year: "[Availability]"
         coverImage:
           src: /assets/project-resonant.svg
-          alt: Cartography still
-        slug: /project-resonant
+          alt: "[Describe: e.g., 'Chef demonstrating lamination technique']"
+        slug: /contact#private-lessons
         span: tall
+
   - type: text-columns
-    title: Studio focus
+    title: My Approach
     columns:
-      - label: Approach
-        body: We design grid systems like choreographies—setting constraints that invite improvisation when the story demands it.
-      - label: Research
-        body: Each commission begins with physical moodboards, type studies, and palette tests before any production code ships.
-      - label: Technology
-        body: Local-first stacks, deterministic builds, and content schemas that empower curators to iterate without developer hand-holding.
+      - label: Philosophy
+        body: "[Describe your teaching philosophy: What do you believe about learning pastry? How do you balance tradition and accessibility? e.g., 'I teach pastry as meditation — precise movements repeated until they become intuition. No rushing, no shortcuts, just the satisfaction of mastering a craft.']"
+      - label: Ingredients
+        body: "[Describe your ingredient sourcing and standards: Where do you source specialty items? What quality standards matter to you? e.g., 'Kyoto-sourced matcha, Hokkaido azuki beans, and seasonal fruits from local farms. The ingredients tell half the story.']"
+      - label: Background
+        body: "[Brief credentials or journey: Where did you train? What shaped your path? e.g., 'Trained in Kyoto under master wagashi artisans, then spent five years in French pâtisserie. Now teaching from my home studio in Oakland.']"
+
   - type: list-section
-    title: Selected collaborators
+    title: "[Section title, e.g., 'What Students Say' or 'As Featured In']"
     items:
-      - label: Liminal Magazine
-        detail: Vol. 32 interactive dossier
-      - label: Orbit Media
-        detail: Seasonal editorial systems
-      - label: House Élan
-        detail: Digital atelier relaunch
-      - label: Signal Archive
-        detail: Experimental residency
+      - label: "[Student name or publication]"
+        detail: "[Quote excerpt or feature description, e.g., '\"Finally understood why my mochi never worked. Life-changing class.\"']"
+      - label: "[Student name or publication]"
+        detail: "[Quote or description]"
+      - label: "[Student name or publication]"
+        detail: "[Quote or description]"
+      - label: "[Student name or publication]"
+        detail: "[Quote or description]"
+
   - type: contact
-    title: Open for commissions
-    body: Let’s build a portfolio surface that feels more like a publication. Provide a brief or leave a voice note; we’ll reply within three days.
-    email: hello@atelier-meridian.example
-    formAction: https://formspree.io/f/atelier
+    title: "[Call to action, e.g., 'Ready to Begin?' or 'Let's Bake Together']"
+    body: "[Describe what happens when someone reaches out: e.g., 'Whether you're curious about a workshop, want to discuss private lessons, or have questions about shipping pastries — I'd love to hear from you. I respond to every message within 48 hours.']"
+    email: "[your-email]@[domain].com"
+    formAction: https://formspree.io/f/[your-form-id]

@@ -1,13 +1,22 @@
+# Catalog Page Configuration for Japanese Pastry Chef & Educator
+# Inspired by: Kaori Ishibashi, Fumiko Kono, Niki Nakayama, Sadaharu Aoki
+
 hero:
-  title: Neighborhood commerce, powered by Shopify
-  body: Help local studios and tutors sell prints, workshops, and services without touching Shopify’s admin. Build the catalog here, then send shoppers straight to Shopify checkout links.
-  ctaLabel: Browse all merchants
-  ctaHref: /merchants
+  title: "[Shop headline, e.g., 'Seasonal Pastries, Shipped Fresh']"
+  body: |
+    [Describe your shop offerings and what makes them special:
+
+    e.g., 'Handcrafted Japanese pastries made in small batches every week. Each box is an invitation to slow down — pair with tea, share with someone you love, or keep them all for yourself.
+
+    Orders ship every Friday via overnight courier. Currently shipping to [your service area, e.g., 'California, Oregon, Washington, and Nevada'].']
+  ctaLabel: Browse Selection
+  ctaHref: "#products"
+
 emptyState:
-  title: No merchants are active yet
-  body: Use the Commerce Suite wizard in your admin panel to create a merchant, map Shopify variant IDs, and publish your first cart-ready catalog.
+  title: "[Message when shop is empty: e.g., 'The Kitchen is Resting']"
+  body: |
+    [Explain why the shop might be empty and when to check back:
 
+    e.g., 'I take breaks between seasons to rest and develop new recipes. Sign up for the newsletter to be notified when the next collection launches, or check back in early [next season].
 
-
-
-
+    In the meantime, consider joining a workshop — you'll leave with plenty of pastries to take home.']

@@ -1,11 +1,13 @@
+# Shop Configuration for Japanese Pastry Chef & Educator
+# Inspired by: Kaori Ishibashi, Fumiko Kono, Niki Nakayama, Sadaharu Aoki
+
 shop:
-  domain: "studio-loom.myshopify.com"
-  name: "Studio Loom"
-  description: "Letterpress prints and workshops"
-  logoUrl: "/assets/project-elan.svg"
-  storefrontAccessToken: ""
-  featuredCollection: ""
-  cartNote: "Order via Studio Loom"
+  domain: "[your-store].myshopify.com"
+  name: "[Your Shop Name, e.g., '[Your Name] Pastry Shop']"
+  description: "[Brief shop description: e.g., 'Seasonal Japanese pastries, handcrafted and shipped fresh every Friday.']"
+  logoUrl: "/assets/favicon.svg"
+  storefrontAccessToken: "[Your Shopify Storefront API token]"
+  featuredCollection: "[Your featured collection handle, e.g., 'seasonal-wagashi']"
+  cartNote: "[Cart message: e.g., 'Orders ship every Friday. Please allow 3-5 days for delivery.']"
 
 enableMultiMerchant: false
-

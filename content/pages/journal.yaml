@@ -1,93 +1,110 @@
+# Journal/Blog Page for Japanese Pastry Chef & Educator
+# Inspired by: Kaori Ishibashi, Fumiko Kono, Niki Nakayama, Sadaharu Aoki
+
 slug: /journal
-title: Field Notes
+title: Journal
 layout: journal
+
 journalPosts:
-  - id: vol-07
-    title: Vol. 07 — Cyberpunk and us
-    slug: /journal/cyberpunk-and-us
-    excerpt: Three-day study sprint translating neon alleys and rain-slick reflections into textiles.
-    publishedAt: 2025-11-04
+  - id: post-seasonal-wagashi
+    title: "[Post Title, e.g., 'Spring Wagashi — Reading the Season']"
+    slug: /journal/spring-wagashi
+    excerpt: "[Brief teaser that makes readers want to click: e.g., 'How I plan my seasonal wagashi calendar, and why the first cherry blossom isn't always the right moment to start.']"
+    publishedAt: 2025-03-15
     coverImage:
       src: /assets/project-orbit-1.svg
-      alt: Cyberpunk reflections collage
+      alt: "[Describe: e.g., 'Pink and white nerikiri arranged on a black lacquer tray']"
     blocks:
       - type: text
-        title: Mapping neon to jacquard
+        title: "[Section heading, e.g., 'Timing the Season']"
         body: |
-          We layered additive primaries over desaturated underpaintings, then back-lit the swatches to recreate moisture sheen. The constraint—three inks only—forced brutal hierarchy decisions.
+          [Write about seasonal awareness in wagashi: How do you decide when spring begins for your pastries? What natural signs do you watch for? How does this differ from Western seasonal baking?
+
+          Share a specific story — perhaps a year when you started too early, or a customer who taught you something about patience. Make it personal and practical.]
       - type: image
         media:
           src: /assets/project-orbit-2.svg
-          alt: Palette film strip
-        caption: Filmstrip of palette blends captured during the residency.
-  - id: vol-06
-    title: Vol. 06 — Silk diffraction studies
-    slug: /journal/silk-diffraction
-    excerpt: Messing with moiré interference on raw silk panels destined for a retail sculpture.
-    publishedAt: 2025-06-18
+          alt: "[Describe: e.g., 'Progression of cherry blossom wagashi from bud to full bloom']"
+        caption: "[Descriptive caption, e.g., 'The same design evolves week by week as the season deepens.']"
+
+  - id: post-azuki-guide
+    title: "[Post Title, e.g., 'The Azuki Primer — Choosing, Cooking, Transforming']"
+    slug: /journal/azuki-primer
+    excerpt: "[Teaser: e.g., 'Everything I wish someone had told me about red beans before I ruined my first fifty batches of anko.']"
+    publishedAt: 2025-02-01
     coverImage:
       src: /assets/project-orbit-3.svg
-      alt: Diffraction patterns on silk
+      alt: "[Describe: e.g., 'Dried azuki beans beside finished tsubuan and koshian']"
       focalPoint: right
     blocks:
       - type: image-grid
         items:
           - media:
-              src: https://cards.scryfall.io/normal/front/e/0/e0ef33dd-5f6d-48fa-8ef6-a8092868d50f.jpg?1759144844
-              alt: ""
+              src: /assets/project-orbit-1.svg
+              alt: "[Describe: e.g., 'Dried Hokkaido azuki beans']"
               focalPoint: center
-            caption: Figure of vanilla
+            caption: "[Caption: e.g., 'Dainagon azuki — larger, holds shape better for tsubuan']"
           - media:
-              src: https://cards.scryfall.io/normal/front/b/2/b2d9d5ca-7e15-437a-bdfc-5972b42148fe.jpg?1759144812
-              alt: ""
+              src: /assets/project-orbit-2.svg
+              alt: "[Describe: e.g., 'Beans soaking in water']"
               focalPoint: center
-            caption: Lorwyn is so back
+            caption: "[Caption: e.g., 'Overnight soak — the step most recipes skip but shouldn't']"
           - media:
-              src: https://cards.scryfall.io/normal/front/f/e/fe3a421d-07b6-4b94-b177-aec44c7fe689.jpg?1759144840
-              alt: ""
+              src: /assets/project-orbit-3.svg
+              alt: "[Describe: e.g., 'Finished smooth koshian']"
               focalPoint: right
-            caption: Will we have a textless version of this?
+            caption: "[Caption: e.g., 'Koshian strained three times for silk texture']"
       - type: text
-        title: Project brief
+        title: "[Section heading, e.g., 'Why Bean Quality Matters']"
         body: |
-          We wanted a tactile diffraction grating without the cold austerity of brushed aluminum. Silk took the dyes beautifully, but stretching introduced unpredictable warp, so we leaned into it.
+          [Write about azuki sourcing and quality: Where do you source your beans? What's the difference between commodity and specialty azuki? How does freshness affect cooking time and flavor?
+
+          Include practical tips — signs of good beans, storage advice, brands you trust. Be specific and opinionated.]
       - type: quote
-        quote: Keep the interference visible enough to feel alive, but soft enough for retail sightlines.
-        cite: Orbit Creative Director
+        quote: "[A memorable quote about patience, craft, or ingredients — either your own words or from a teacher/mentor who influenced you]"
+        cite: "[Attribution]"
       - type: text
-        title: ""
-        body: ""
-  - id: vol-05
-    title: Vol. 05 — Letterpress grid prototyping
-    slug: /journal/letterpress-grid
-    excerpt: Translating responsive layout breakpoints into analog letterpress experiments.
-    publishedAt: 2025-04-02
+        title: "[Section heading, e.g., 'The Cooking Process']"
+        body: |
+          [Walk through your anko-making process: What's your water ratio? How do you know when beans are done? What's the difference between tsubuan and koshian in your practice?
+
+          Share at least one mistake you made learning this and what it taught you.]
+
+  - id: post-teaching-philosophy
+    title: "[Post Title, e.g., 'Why I Teach Small Classes']"
+    slug: /journal/why-small-classes
+    excerpt: "[Teaser: e.g., 'Six students maximum, and the real reason has nothing to do with kitchen space.']"
+    publishedAt: 2025-01-10
     coverImage:
       src: /assets/project-resonant.svg
-      alt: Letterpress lockup
+      alt: "[Describe: e.g., 'Students gathered around a work table, hands in dough']"
     blocks:
       - type: text
-        title: Why letterpress
+        title: "[Opening section title, e.g., 'The Factory Model Doesn't Work']"
         body: |
-          The grid logic becomes obvious when you physically shuffle slugs on a press bed. Every breakpoint is a literal spacer, which then informs the CSS clamp ranges we ship.
+          [Write about your teaching philosophy: Why do you limit class sizes? What happens in a small class that can't happen in a large one? What did you learn from your own teachers about attention and presence?
+
+          Share a specific teaching moment that crystallized this for you — a student breakthrough, a question that changed how you explained something, a failure that taught you to slow down.]
       - type: image-grid
         items:
           - media:
               src: /assets/project-signal.svg
-              alt: Gridded lockup
-            caption: Lockup referencing tablet breakpoint.
+              alt: "[Describe: e.g., 'Hands shaping mochi']"
+            caption: "[Caption: e.g., 'The moment when muscle memory clicks — you can see it happen.']"
           - media:
               src: /assets/project-dawn.svg
-              alt: Inked proofs
-            caption: Proofs arranged from mobile to desktop width.
+              alt: "[Describe: e.g., 'Student's first successful shokupan']"
+            caption: "[Caption: e.g., 'Every first loaf gets photographed. Non-negotiable studio rule.']"
+
 sections:
   - type: hero
     kicker: Journal
-    title: Production notes, sketches, and textile research.
-    subtitle: An ongoing log of palette experiments, typography tests, and cataloguing of physical references.
+    title: "[Your journal tagline, e.g., 'Recipes, techniques, and the stories behind the pastries.']"
+    subtitle: "[Describe what readers will find: e.g., 'Notes from the studio — seasonal menus, ingredient deep-dives, teaching observations, and occasional recipes for home bakers.']"
+
   - type: blog-roll
-    title: Entries
+    title: Recent Posts
     posts:
-      - postId: vol-07
-      - postId: vol-06
-      - postId: vol-05
+      - postId: post-seasonal-wagashi
+      - postId: post-azuki-guide
+      - postId: post-teaching-philosophy

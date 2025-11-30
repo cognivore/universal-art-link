@@ -1,35 +1,44 @@
-siteTitle: Atelier Meridian
-siteDescription: A research-focused art and creative technology studio crafting tactile digital experiences.
-baseUrl: https://atelier-meridian.example
+# Site Configuration for Japanese Pastry Chef & Educator
+# Inspired by: Kaori Ishibashi, Fumiko Kono, Niki Nakayama, Sadaharu Aoki
+
+siteTitle: "[Your Name] — Japanese Pastry & Wagashi"
+siteDescription: "[A one-sentence description of your practice: e.g., 'Teaching the art of Japanese confectionery through intimate workshops and seasonal pastry boxes shipped nationwide.']"
+baseUrl: https://[your-domain].com
 favicon: /assets/favicon.svg
+
 theme:
   mode: light
-  background: "#85fdff"
-  foreground: "#ff0000"
-  accent: "#4d6dff"
-  muted: "#6b6b6b"
-  borderSubtle: rgba(0,0,0,0.12)
+  background: "#faf8f5"
+  foreground: "#2d2926"
+  accent: "#c4a77d"
+  muted: "#8b8178"
+  borderSubtle: rgba(45,41,38,0.08)
   typography:
-    displaySans: "'Space Grotesk', 'Inter', 'Helvetica Neue', sans-serif"
-    bodySans: "'Suisse Intl', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
-    accentSerif: "'Cormorant Garamond', georgia, serif"
+    displaySans: "'Cormorant Garamond', 'Noto Serif JP', georgia, serif"
+    bodySans: "'Inter', 'Noto Sans JP', system-ui, -apple-system, sans-serif"
+    accentSerif: "'Cormorant Garamond', 'Noto Serif JP', georgia, serif"
   density: airy
+
 navigation:
-  - label: Work
-    href: /work
-  - label: Selected Project
-    href: /project-orbit
+  - label: Classes
+    href: /classes
+  - label: Signature Course
+    href: /foundations-of-wagashi
   - label: Journal
     href: /journal
   - label: Shop
     href: /shop
   - label: Contact
     href: /contact
+
 socialLinks:
   - label: Instagram
-    href: https://instagram.com/atelier_meridian
-  - label: 4re.na
-    href: https://www.are.na/atelier-meridian
+    href: https://instagram.com/[your_handle]
+  - label: YouTube
+    href: https://youtube.com/@[your_channel]
+  - label: Newsletter
+    href: /contact#newsletter
+
 deploy:
   endpoint: https://deploy.example.com/hooks/site
   method: POST
