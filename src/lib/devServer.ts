@@ -562,11 +562,15 @@ const handleStripeApi = async (
         // If product has Stripe IDs and sync service is available, sync changes to Stripe
         if (stripeSyncService && product.stripeProductId) {
           try {
+            logger.info(`[stripe] Syncing product ${productId} to Stripe (stripeProductId: ${product.stripeProductId})`);
             product = await stripeSyncService.syncProductDetails(productId);
+            logger.info(`[stripe] Product synced successfully. imageUrl: ${product.imageUrl}`);
           } catch (syncError) {
             // Log but don't fail - local update succeeded
-            console.error('[stripe] Failed to sync product to Stripe:', syncError);
+            logger.error('[stripe] Failed to sync product to Stripe:', syncError);
           }
+        } else {
+          logger.info(`[stripe] Not syncing: stripeSyncService=${!!stripeSyncService}, stripeProductId=${product.stripeProductId}`);
         }
 
         return respondWithProduct(200, product);

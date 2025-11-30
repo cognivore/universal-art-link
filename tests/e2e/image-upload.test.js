@@ -89,9 +89,9 @@ describe('Image Upload Regression', () => {
   test('1. Upload image via API', async () => {
     const { svg, hash } = generateTestSvg();
     uploadedSvgHash = hashBuffer(Buffer.from(svg, 'utf8'));
-    
+
     console.log(`   📤 Uploading SVG (hash: ${uploadedSvgHash.slice(0, 16)}...)`);
-    
+
     const base64 = Buffer.from(svg, 'utf8').toString('base64');
     const response = await authFetch(`${API_BASE}/assets/upload`, {
       method: 'POST',
@@ -103,48 +103,48 @@ describe('Image Upload Regression', () => {
     });
 
     assert.strictEqual(response.status, 201, `Upload failed with status ${response.status}`);
-    
+
     const data = await response.json();
     assert.ok(data.url, 'Response must include url');
     assert.ok(data.url.startsWith('/assets/'), 'URL must start with /assets/');
-    
+
     uploadedAssetUrl = data.url;
     console.log(`   ✅ Uploaded to: ${uploadedAssetUrl}`);
   });
 
   test('2. Verify uploaded image is IMMEDIATELY accessible via HTTP', async () => {
     assert.ok(uploadedAssetUrl, 'Must have uploaded URL from previous test');
-    
+
     const fullUrl = `${STAGING_URL}${uploadedAssetUrl}`;
     console.log(`   📥 Fetching: ${fullUrl}`);
-    
+
     // The image MUST be accessible immediately after upload - no retries!
     // This tests the fix for the asset fallback to source directory
     const response = await fetch(fullUrl);
-    
+
     assert.strictEqual(
-      response.status, 
-      200, 
+      response.status,
+      200,
       `Asset not accessible IMMEDIATELY after upload. Status: ${response.status}. URL: ${fullUrl}. ` +
       `This indicates the serveStatic fallback to source assets is not working.`
     );
-    
+
     const contentType = response.headers.get('content-type');
     assert.ok(
       contentType?.includes('image') || contentType?.includes('svg'),
       `Expected image content-type, got: ${contentType}`
     );
-    
+
     // Verify hash matches
     const fetchedBuffer = Buffer.from(await response.arrayBuffer());
     const fetchedHash = hashBuffer(fetchedBuffer);
-    
+
     assert.strictEqual(
       fetchedHash,
       uploadedSvgHash,
       `Hash mismatch! Uploaded: ${uploadedSvgHash.slice(0, 16)}... Fetched: ${fetchedHash.slice(0, 16)}...`
     );
-    
+
     console.log(`   ✅ Image accessible and hash verified`);
   });
 
@@ -152,10 +152,10 @@ describe('Image Upload Regression', () => {
     // List products and find our test product
     const listResponse = await authFetch(`${API_BASE}/stripe/products`);
     assert.strictEqual(listResponse.status, 200, 'Failed to list products');
-    
+
     const { products } = await listResponse.json();
     const existing = products.find(p => p.name === PRODUCT_NAME);
-    
+
     if (existing) {
       testProductId = existing.id;
       console.log(`   📦 Found existing product: ${testProductId}`);
@@ -177,7 +177,7 @@ describe('Image Upload Regression', () => {
           },
         }),
       });
-      
+
       assert.strictEqual(createResponse.status, 201, 'Failed to create product');
       const created = await createResponse.json();
       testProductId = created.id;
@@ -188,7 +188,7 @@ describe('Image Upload Regression', () => {
   test('4. Update product with new image', async () => {
     assert.ok(testProductId, 'Must have product ID from previous test');
     assert.ok(uploadedAssetUrl, 'Must have uploaded URL');
-    
+
     const patchResponse = await authFetch(`${API_BASE}/stripe/products/${testProductId}`, {
       method: 'PATCH',
       body: JSON.stringify({
@@ -196,9 +196,9 @@ describe('Image Upload Regression', () => {
         description: `Updated ${new Date().toISOString()} - Run: ${TEST_RUN_ID}`,
       }),
     });
-    
+
     assert.strictEqual(patchResponse.status, 200, 'Failed to update product');
-    
+
     const updated = await patchResponse.json();
     console.log(`   ✅ Product updated with new image`);
     console.log(`      Image URL: ${updated.imageUrl}`);
@@ -209,33 +209,33 @@ describe('Image Upload Regression', () => {
     const syncResponse = await authFetch(`${API_BASE}/stripe/sync/export`, {
       method: 'POST',
     });
-    
+
     assert.strictEqual(syncResponse.status, 200, 'Stripe sync failed');
     const syncResult = await syncResponse.json();
     console.log(`   🔄 Sync result: exported=${syncResult.exported}, skipped=${syncResult.skipped}`);
-    
+
     // Get the product to find its Stripe ID
     const productResponse = await authFetch(`${API_BASE}/stripe/products/${testProductId}`);
     assert.strictEqual(productResponse.status, 200);
     const product = await productResponse.json();
-    
+
     if (!product.stripeProductId) {
       console.log('   ⚠️  Product not yet synced to Stripe (no stripeProductId)');
       return;
     }
-    
+
     // Verify the Stripe product has the image
     const verifyResponse = await authFetch(
       `${API_BASE}/stripe/verify-product/${product.stripeProductId}`
     );
-    
+
     assert.strictEqual(verifyResponse.status, 200, 'Failed to verify Stripe product');
     const stripeProduct = await verifyResponse.json();
-    
+
     console.log(`   ✅ Stripe product verified: ${stripeProduct.id}`);
     console.log(`      Name: ${stripeProduct.name}`);
     console.log(`      Images: ${stripeProduct.images?.length ?? 0}`);
-    
+
     if (stripeProduct.images?.length > 0) {
       console.log(`      Image URL: ${stripeProduct.images[0]}`);
     }
