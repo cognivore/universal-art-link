@@ -23,6 +23,7 @@
     "test:e2e:shadcn": "node --test tests/e2e/shadcn-admin.test.js",
     "test:e2e:blog": "node --test tests/e2e/blog-cms.test.js",
     "test:e2e:staging": "node --test tests/e2e/staging-stripe.test.js",
+    "test:e2e:stripe": "node --test tests/e2e/stripe-integration.test.js",
     "test:all": "pnpm test && pnpm test:e2e",
     "staging:jwt": "tsx src/lib/stagingAuth.ts"
   },
