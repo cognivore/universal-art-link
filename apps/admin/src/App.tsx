@@ -27,7 +27,9 @@ export const App = () => {
   const stripeEnv = getStripeMode();
   const isStaging = stripeEnv === 'staging';
   const isSanta = session?.isSanta ?? false;
-  const showSettings = stripeMode && (isSanta || isStaging);
+  const isAuthenticated = session?.authenticated ?? false;
+  // Show settings tab to all authenticated admins in Stripe mode
+  const showSettings = stripeMode && isAuthenticated;
   const [view, setView] = useState<AdminView>(stripeMode ? 'stripe' : 'content');
 
   // Show loading state while checking auth
@@ -86,8 +88,10 @@ export const App = () => {
         {showSettings && (
           <TabsContent value="settings">
             <div className="space-y-6">
-              <StagingSettings />
-              {isSanta && <PromotionPanel />}
+              {/* Santa settings - only show to Santa users or on staging */}
+              {(isSanta || isStaging) && <StagingSettings />}
+              {/* Promotion panel - available to all authenticated admins */}
+              <PromotionPanel />
             </div>
           </TabsContent>
         )}

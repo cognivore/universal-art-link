@@ -198,6 +198,46 @@ const injectRuntimeConfig = (html: string, runtime: AdminRuntimeConfig): string 
   return `${script}${html}`;
 };
 
+/**
+ * Inject Santa override banner script into all pages.
+ * Shows a prominent warning when Santa bypass is enabled.
+ */
+const injectSantaBanner = (html: string, isAdminPage: boolean): string => {
+  const adminLink = isAdminPage
+    ? `<button onclick="window.location.hash='';setTimeout(()=>document.querySelector('[value=settings]')?.click(),100)" style="margin-left:auto;padding:8px 16px;background:#fff;color:#b91c1c;border:none;border-radius:6px;font-weight:600;cursor:pointer">Go to Settings</button>`
+    : `<a href="/admin" style="margin-left:auto;padding:8px 16px;background:#fff;color:#b91c1c;border-radius:6px;font-weight:600;text-decoration:none">Admin Panel</a>`;
+
+  const snippet = `
+    <script>
+      (function() {
+        fetch('/__ual/santa-status')
+          .then(r => r.json())
+          .then(data => {
+            if (!data.enabled) return;
+            const banner = document.createElement('div');
+            banner.id = 'ual-santa-banner';
+            banner.innerHTML = \`
+              <div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(90deg,#b91c1c,#dc2626);color:#fff;padding:12px 20px;display:flex;align-items:center;gap:12px;font-family:system-ui,-apple-system,sans-serif;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.2)">
+                <span style="font-size:20px">🎅</span>
+                <strong>SANTA OVERRIDE ACTIVE</strong>
+                <span style="opacity:0.9">Disable Santa bypass in Settings before going live. This banner appears on all pages while the override is enabled.</span>
+                ${adminLink}
+              </div>
+            \`;
+            document.body.prepend(banner);
+            document.body.style.paddingTop = '52px';
+          })
+          .catch(() => {});
+      })();
+    </script>
+  `;
+
+  if (html.includes('</body>')) {
+    return html.replace('</body>', `${snippet}</body>`);
+  }
+  return `${html}${snippet}`;
+};
+
 const respondJson = (res: http.ServerResponse<http.IncomingMessage>, status: number, payload: unknown): void => {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -1261,6 +1301,8 @@ const serveStatic = async (
     if (isAdminRequest) {
       html = injectRuntimeConfig(html, options.runtimeConfig);
     }
+    // Inject Santa banner on ALL pages (admin and site)
+    html = injectSantaBanner(html, isAdminRequest);
     res.end(html);
     return;
   }
@@ -1379,6 +1421,12 @@ export const startDevServer = ({
     if (requestUrl.pathname === '/__ual/healthz') {
       logger.info('[devserver] Health check');
       respondJson(res, 200, { ok: true, ts: Date.now(), stripeMode: isStripeMode });
+      return;
+    }
+
+    // Public endpoint for Santa bypass status (used by injected banner script)
+    if (requestUrl.pathname === '/__ual/santa-status') {
+      respondJson(res, 200, { enabled: isStagingBypassEnabled() });
       return;
     }
 
