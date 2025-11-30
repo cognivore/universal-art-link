@@ -71,13 +71,13 @@ proc run_e2e_tests {
   setglobal ENV.UAL_STAGING_URL = "https://$STAGING_DOMAIN"
   setglobal ENV.UAL_STAGING_JWT = "$jwt"
 
-  var test_result = 0
+  var test_ok = false
   try {
     pnpm test:e2e:staging
+    setvar test_ok = true
   }
-  setvar test_result = $?
 
-  if (test_result === 0) {
+  if test "$test_ok" = true {
     log_success "All E2E tests passed! 🎉"
   } else {
     log_error "Some E2E tests failed"
