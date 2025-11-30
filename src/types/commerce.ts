@@ -8,8 +8,14 @@ const isoDate = z.string().min(1, 'Timestamp required');
 const optionalUrl = z
   .string()
   .trim()
-  .url()
-  .or(z.string().trim().min(1))
+  .transform((val) => (val === '' ? undefined : val))
+  .pipe(
+    z
+      .string()
+      .url()
+      .or(z.string().min(1))
+      .optional()
+  )
   .optional();
 
 export const MerchantSchema = z.object({

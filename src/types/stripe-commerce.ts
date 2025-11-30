@@ -14,8 +14,14 @@ const isoDate = z.string().min(1, 'Timestamp required');
 const optionalUrl = z
   .string()
   .trim()
-  .url()
-  .or(z.string().trim().startsWith('/'))
+  .transform((val) => (val === '' ? undefined : val))
+  .pipe(
+    z
+      .string()
+      .url()
+      .or(z.string().startsWith('/'))
+      .optional()
+  )
   .optional();
 
 export const StripeProductSchema = z.object({
