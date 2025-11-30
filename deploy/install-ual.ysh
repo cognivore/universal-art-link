@@ -28,7 +28,7 @@ UAL_JWT_SECRET=${UAL_JWT_SECRET:-}
 UAL_MAGIC_LINK_SECRET=${UAL_MAGIC_LINK_SECRET:-}
 
 # Staging Auth Bypass (Christmas-themed!)
-UAL_STAGING_BYPASS=true
+UAL_STAGING_BYPASS=false
 UAL_STAGING_JWT=${UAL_STAGING_JWT:-}
 
 # Email (Resend)
@@ -62,8 +62,8 @@ STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
 UAL_JWT_SECRET=${UAL_JWT_SECRET:-}
 UAL_MAGIC_LINK_SECRET=${UAL_MAGIC_LINK_SECRET:-}
 
-# Santa bypass (enabled temporarily for automated tests)
-UAL_STAGING_BYPASS=true
+# Santa bypass (disabled by default - enable via admin panel if needed)
+UAL_STAGING_BYPASS=false
 UAL_STAGING_JWT=${UAL_STAGING_JWT:-}
 
 # Email (Resend)
