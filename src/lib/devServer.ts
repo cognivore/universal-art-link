@@ -982,9 +982,9 @@ const handlePromotionApi = async (
 
   const method = req.method ?? 'GET';
 
-  // Promotion requires is_santa authentication
-  if (!req.user?.is_santa) {
-    respondJson(res, 403, { error: 'Santa authentication required for promotion' });
+  // Promotion requires authentication (any admin can promote)
+  if (!req.user) {
+    respondJson(res, 401, { error: 'Authentication required for promotion' });
     return true;
   }
 
@@ -1038,6 +1038,211 @@ const handlePromotionApi = async (
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Promotion request failed';
     logger.error('[promotion] Error:', error);
+    respondJson(res, 500, { error: message });
+    return true;
+  }
+};
+
+// =============================================================================
+// Snapshots API - Save states for content and assets
+// =============================================================================
+
+type Snapshot = {
+  id: string;
+  name: string;
+  createdAt: string;
+  createdBy: string;
+  size: number;
+};
+
+type SnapshotsIndex = {
+  snapshots: Snapshot[];
+};
+
+const SNAPSHOTS_DIR = '.ual/snapshots';
+const SNAPSHOTS_INDEX = '.ual/snapshots/index.json';
+
+const ensureSnapshotsDir = async (paths: PathConfig): Promise<string> => {
+  const snapshotsDir = path.join(paths.rootDir, SNAPSHOTS_DIR);
+  await fs.ensureDir(snapshotsDir);
+  return snapshotsDir;
+};
+
+const loadSnapshotsIndex = async (paths: PathConfig): Promise<SnapshotsIndex> => {
+  const indexPath = path.join(paths.rootDir, SNAPSHOTS_INDEX);
+  try {
+    const content = await fs.readFile(indexPath, 'utf8');
+    return JSON.parse(content) as SnapshotsIndex;
+  } catch {
+    return { snapshots: [] };
+  }
+};
+
+const saveSnapshotsIndex = async (paths: PathConfig, index: SnapshotsIndex): Promise<void> => {
+  await ensureSnapshotsDir(paths);
+  const indexPath = path.join(paths.rootDir, SNAPSHOTS_INDEX);
+  await fs.writeFile(indexPath, JSON.stringify(index, null, 2));
+};
+
+const calculateDirSize = async (dirPath: string): Promise<number> => {
+  let total = 0;
+  try {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryPath = path.join(dirPath, entry.name);
+      if (entry.isDirectory()) {
+        total += await calculateDirSize(entryPath);
+      } else {
+        const stat = await fs.stat(entryPath);
+        total += stat.size;
+      }
+    }
+  } catch {
+    // Directory doesn't exist or can't be read
+  }
+  return total;
+};
+
+const handleSnapshotsApi = async (
+  req: AuthenticatedRequest,
+  res: http.ServerResponse<http.IncomingMessage>,
+  paths: PathConfig,
+  requestUrl: URL,
+  logger: Logger,
+): Promise<boolean> => {
+  if (!requestUrl.pathname.startsWith('/__ual/api/admin/snapshots')) {
+    return false;
+  }
+
+  const method = req.method ?? 'GET';
+
+  // Snapshots require authentication
+  if (!req.user) {
+    respondJson(res, 401, { error: 'Authentication required' });
+    return true;
+  }
+
+  const subPath = requestUrl.pathname.replace('/__ual/api/admin/snapshots', '').replace(/^\/+/, '');
+  const segments = subPath ? subPath.split('/').filter(Boolean) : [];
+
+  try {
+    // GET /__ual/api/admin/snapshots - List all snapshots
+    if (segments.length === 0 && method === 'GET') {
+      const index = await loadSnapshotsIndex(paths);
+      respondJson(res, 200, index);
+      return true;
+    }
+
+    // POST /__ual/api/admin/snapshots - Create a new snapshot
+    if (segments.length === 0 && method === 'POST') {
+      const body = await readJsonBody(req);
+      const name = String(body.name ?? `Snapshot ${new Date().toISOString()}`);
+      const id = `snap_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      
+      const snapshotsDir = await ensureSnapshotsDir(paths);
+      const snapshotDir = path.join(snapshotsDir, id);
+      await fs.ensureDir(snapshotDir);
+
+      // Copy content directory
+      const contentDest = path.join(snapshotDir, 'content');
+      await fs.copy(paths.contentDir, contentDest);
+      logger.info(`[snapshots] Copied content to ${contentDest}`);
+
+      // Copy assets directory
+      const assetsDest = path.join(snapshotDir, 'assets');
+      await fs.copy(paths.assetsDir, assetsDest);
+      logger.info(`[snapshots] Copied assets to ${assetsDest}`);
+
+      // Calculate size
+      const size = await calculateDirSize(snapshotDir);
+
+      // Update index
+      const index = await loadSnapshotsIndex(paths);
+      const snapshot: Snapshot = {
+        id,
+        name,
+        createdAt: new Date().toISOString(),
+        createdBy: req.user.sub,
+        size,
+      };
+      index.snapshots.unshift(snapshot); // Add to beginning
+      await saveSnapshotsIndex(paths, index);
+
+      logger.info(`[snapshots] Created snapshot ${id} by ${req.user.sub}`);
+      respondJson(res, 201, { snapshot });
+      return true;
+    }
+
+    // POST /__ual/api/admin/snapshots/:id/restore - Restore a snapshot
+    if (segments.length === 2 && segments[1] === 'restore' && method === 'POST') {
+      const snapshotId = segments[0] ?? '';
+      const index = await loadSnapshotsIndex(paths);
+      const snapshot = index.snapshots.find(s => s.id === snapshotId);
+      
+      if (!snapshot) {
+        respondJson(res, 404, { error: 'Snapshot not found' });
+        return true;
+      }
+
+      const snapshotsDir = await ensureSnapshotsDir(paths);
+      const snapshotDir = path.join(snapshotsDir, snapshotId);
+      
+      if (!await fs.pathExists(snapshotDir)) {
+        respondJson(res, 404, { error: 'Snapshot data not found' });
+        return true;
+      }
+
+      // Restore content
+      const contentSrc = path.join(snapshotDir, 'content');
+      if (await fs.pathExists(contentSrc)) {
+        await fs.emptyDir(paths.contentDir);
+        await fs.copy(contentSrc, paths.contentDir);
+        logger.info(`[snapshots] Restored content from ${contentSrc}`);
+      }
+
+      // Restore assets
+      const assetsSrc = path.join(snapshotDir, 'assets');
+      if (await fs.pathExists(assetsSrc)) {
+        await fs.emptyDir(paths.assetsDir);
+        await fs.copy(assetsSrc, paths.assetsDir);
+        logger.info(`[snapshots] Restored assets from ${assetsSrc}`);
+      }
+
+      logger.info(`[snapshots] Restored snapshot ${snapshotId} by ${req.user.sub}`);
+      respondJson(res, 200, { success: true, message: 'Snapshot restored' });
+      return true;
+    }
+
+    // DELETE /__ual/api/admin/snapshots/:id - Delete a snapshot
+    if (segments.length === 1 && method === 'DELETE') {
+      const snapshotId = segments[0] ?? '';
+      const index = await loadSnapshotsIndex(paths);
+      const snapshotIdx = index.snapshots.findIndex(s => s.id === snapshotId);
+      
+      if (snapshotIdx === -1) {
+        respondJson(res, 404, { error: 'Snapshot not found' });
+        return true;
+      }
+
+      // Remove from index
+      index.snapshots.splice(snapshotIdx, 1);
+      await saveSnapshotsIndex(paths, index);
+
+      // Delete snapshot directory
+      const snapshotsDir = await ensureSnapshotsDir(paths);
+      const snapshotDir = path.join(snapshotsDir, snapshotId);
+      await fs.remove(snapshotDir);
+
+      logger.info(`[snapshots] Deleted snapshot ${snapshotId} by ${req.user.sub}`);
+      respondJson(res, 200, { success: true });
+      return true;
+    }
+
+    respondJson(res, 404, { error: 'Unknown snapshots endpoint' });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Snapshots request failed';
+    logger.error('[snapshots] Error:', error);
     respondJson(res, 500, { error: message });
     return true;
   }
@@ -1563,7 +1768,7 @@ export const startDevServer = ({
       }
     }
 
-    // Handle promotion API endpoints (only in Stripe mode, requires is_santa)
+    // Handle promotion API endpoints (only in Stripe mode on staging)
     if (isStripeMode && requestUrl.pathname.startsWith('/__ual/api/admin/promote')) {
       logger.info(`[devserver] Promotion API: ${requestMethod} ${requestPath}`);
       try {
@@ -1574,6 +1779,21 @@ export const startDevServer = ({
       } catch (error) {
         logger.error('Promotion API failed', error);
         respondJson(res, 500, { message: 'Promotion API error' });
+        return;
+      }
+    }
+
+    // Handle snapshots API endpoints (available on both staging and production)
+    if (isStripeMode && requestUrl.pathname.startsWith('/__ual/api/admin/snapshots')) {
+      logger.info(`[devserver] Snapshots API: ${requestMethod} ${requestPath}`);
+      try {
+        const handled = await handleSnapshotsApi(req, res, paths, requestUrl, logger);
+        if (handled) {
+          return;
+        }
+      } catch (error) {
+        logger.error('Snapshots API failed', error);
+        respondJson(res, 500, { message: 'Snapshots API error' });
         return;
       }
     }

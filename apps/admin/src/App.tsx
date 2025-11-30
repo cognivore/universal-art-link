@@ -6,6 +6,7 @@ import { CommerceSuite } from './features/commerce/CommerceSuite';
 import { StripeCommerce } from './features/stripe/StripeCommerce';
 import { StagingSettings } from './features/settings/StagingSettings';
 import { PromotionPanel } from './features/settings/PromotionPanel';
+import { SnapshotsPanel } from './features/settings/SnapshotsPanel';
 import { LoginPage } from './features/auth/LoginPage';
 import { useAuth } from './hooks/useAuth';
 import { isStripeMode, getStripeMode } from './lib/runtime-config';
@@ -90,8 +91,10 @@ export const App = () => {
             <div className="space-y-6">
               {/* Santa settings - only show to Santa users or on staging */}
               {(isSanta || isStaging) && <StagingSettings />}
-              {/* Promotion panel - available to all authenticated admins */}
-              <PromotionPanel />
+              {/* On staging: show promotion panel to push to production */}
+              {isStaging && <PromotionPanel />}
+              {/* On both staging and production: show snapshots panel */}
+              <SnapshotsPanel />
             </div>
           </TabsContent>
         )}
