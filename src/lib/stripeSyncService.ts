@@ -335,15 +335,10 @@ export const createStripeSyncService = (
     }
 
     if (!product.stripeProductId || !product.stripePriceId) {
-      logger.info(`[stripe-sync] Product ${productId} not yet exported to Stripe, exporting now...`);
       return exportToStripe(productId);
     }
 
     const image = resolvePublicImageUrl(product.imageUrl);
-    logger.info(`[stripe-sync] Syncing product ${productId} to Stripe`);
-    logger.info(`[stripe-sync]   Local imageUrl: ${product.imageUrl}`);
-    logger.info(`[stripe-sync]   Resolved public URL: ${image}`);
-    logger.info(`[stripe-sync]   assetBaseUrl: ${assetBaseUrl}`);
 
     const updatedStripeProduct = await stripe.products.update(product.stripeProductId, {
       name: product.name,
@@ -355,8 +350,6 @@ export const createStripeSyncService = (
         ual_product_id: product.id,
       },
     });
-
-    logger.info(`[stripe-sync] Stripe response images: ${JSON.stringify(updatedStripeProduct.images)}`);
 
     const updated = await updateStripeProduct(paths, productId, {
       imageUrl: getFirstImage(updatedStripeProduct.images) ?? product.imageUrl,
