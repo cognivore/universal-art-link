@@ -123,14 +123,22 @@ export const createAuthGuard = (
       return true;
     }
 
-    // Static assets don't require auth (but admin pages do)
+    // Static assets don't require auth
     const isStaticAsset = /\.(js|css|svg|png|jpg|jpeg|gif|webp|woff2?|ico)$/i.test(pathname);
-    if (isStaticAsset && !pathname.startsWith('/admin')) {
+    if (isStaticAsset) {
       return true;
     }
 
-    // Admin routes and API routes require authentication
-    const requiresAuth = pathname.startsWith('/admin') || pathname.startsWith('/__ual/api');
+    // Admin HTML pages are public - the React app handles auth internally
+    // This allows the login page to be displayed
+    if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+      // Still try to extract user for optional auth context
+      req.user = extractUser(req, authConfig) ?? undefined;
+      return true;
+    }
+
+    // Only API routes require authentication (except public ones handled above)
+    const requiresAuth = pathname.startsWith('/__ual/api');
     if (!requiresAuth) {
       return true;
     }
