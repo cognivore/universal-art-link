@@ -43,11 +43,14 @@ export const runDevCommand = async ({
   const buildResult = await buildSite({ rootDir, invalidateTemplates: true });
   const adminService = new AdminService(rootDir, log);
 
+  // Use UAL_BASE_URL for production deployments, fallback to localhost for dev
+  const baseUrl = process.env.UAL_BASE_URL ?? `http://localhost:${port}`;
+
   const runtimeConfig: AdminRuntimeConfig = {
-    previewBaseUrl: `http://localhost:${port}`,
+    previewBaseUrl: baseUrl,
     previewHealthPath: '/__ual/healthz',
     apiBaseUrl: '/__ual/api',
-    adminBaseUrl: `http://localhost:${port}/admin`,
+    adminBaseUrl: `${baseUrl}/admin`,
     strapiUrl: resolvedStrapiUrl,
     previewPaths: buildResult.previewPaths,
     singleTenantStripe: effectiveStripeEnabled,

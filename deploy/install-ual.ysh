@@ -38,6 +38,9 @@ UAL_SITE_NAME=${UAL_SITE_NAME:-UAL Admin}
 
 # Admin Users (comma-separated, format: email:name,email:name)
 UAL_ADMIN_EMAILS=${UAL_ADMIN_EMAILS:-}
+
+# Base URL for admin frontend
+UAL_BASE_URL=https://$STAGING_DOMAIN
 EOF
 }
 
@@ -62,6 +65,9 @@ UAL_SITE_NAME=${UAL_SITE_NAME:-UAL Admin}
 
 # Admin Users (comma-separated, format: email:name,email:name)
 UAL_ADMIN_EMAILS=${UAL_ADMIN_EMAILS:-}
+
+# Base URL for admin frontend
+UAL_BASE_URL=https://$PROD_DOMAIN
 EOF
 }
 
