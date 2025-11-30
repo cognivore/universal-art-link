@@ -5,10 +5,14 @@ import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { getStagingBypassState, setStagingBypass, type StagingBypassState } from '../../lib/auth-api';
 import { useAuth } from '../../hooks/useAuth';
+import { getStripeMode } from '../../lib/runtime-config';
 
 export const StagingSettings = () => {
   const { session } = useAuth();
   const isSanta = session?.isSanta ?? false;
+  const isStaging = getStripeMode() === 'staging';
+  // On staging: any admin can toggle. On production: only Santa can enable.
+  const canToggle = isStaging || isSanta;
   const [state, setState] = useState<StagingBypassState | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -115,10 +119,10 @@ export const StagingSettings = () => {
           </div>
         )}
 
-        {/* Non-Santa admins can only disable, not enable */}
-        {!isSanta && state?.enabled && (
+        {/* On production, non-Santa admins can only disable */}
+        {!isStaging && !isSanta && state?.enabled && (
           <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
-            You can disable Santa bypass. Only Santa-authenticated users can re-enable it.
+            You can disable Santa bypass. Only Santa-authenticated users can re-enable it on production.
           </div>
         )}
 
@@ -141,7 +145,7 @@ export const StagingSettings = () => {
             <Switch
               checked={state?.enabled ?? false}
               onCheckedChange={handleToggle}
-              disabled={saving || (!isSanta && !state?.enabled)}
+              disabled={saving || (!canToggle && !state?.enabled)}
             />
           </div>
         </div>
@@ -154,7 +158,7 @@ export const StagingSettings = () => {
                 The current setting overrides the environment variable. This change will be lost on server restart.
               </p>
             </div>
-            {isSanta && (
+            {canToggle && (
               <Button
                 variant="outline"
                 size="sm"

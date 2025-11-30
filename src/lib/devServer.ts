@@ -855,7 +855,9 @@ const handleAdminSettingsApi = async (
   res: http.ServerResponse<http.IncomingMessage>,
   requestUrl: URL,
   logger: Logger,
+  stripeMode: StripeMode | undefined,
 ): Promise<boolean> => {
+  const isStaging = stripeMode === 'staging';
   if (!requestUrl.pathname.startsWith('/__ual/api/admin/settings')) {
     return false;
   }
@@ -877,23 +879,24 @@ const handleAdminSettingsApi = async (
     }
 
     // POST /__ual/api/admin/settings/staging-bypass - Toggle staging bypass
-    // Any admin can DISABLE bypass; only Santa can ENABLE or RESET it
+    // On staging: any admin can enable/disable
+    // On production: any admin can disable, only Santa can enable
     if (isStagingBypassStateEndpoint && method === 'POST') {
       const body = await readJsonBody(req);
 
       if (typeof body.enabled === 'boolean') {
-        // Disabling bypass: any admin can do this (security-safe operation)
-        // Enabling bypass: only Santa can do this (security-sensitive)
-        if (body.enabled === true && !req.user.is_santa) {
-          respondJson(res, 403, { error: 'Santa authentication required to enable bypass' });
+        // Disabling bypass: any admin can do this anywhere (security-safe)
+        // Enabling bypass: any admin on staging, only Santa on production
+        if (body.enabled === true && !isStaging && !req.user.is_santa) {
+          respondJson(res, 403, { error: 'Santa authentication required to enable bypass on production' });
           return true;
         }
         setStagingBypassEnabled(body.enabled);
         logger.info(`[settings] Staging bypass ${body.enabled ? 'enabled' : 'disabled'} by ${req.user.sub}`);
       } else if (body.enabled === null) {
-        // Resetting to env default could re-enable bypass, so require Santa
-        if (!req.user.is_santa) {
-          respondJson(res, 403, { error: 'Santa authentication required to reset bypass' });
+        // Resetting to env default: any admin on staging, only Santa on production
+        if (!isStaging && !req.user.is_santa) {
+          respondJson(res, 403, { error: 'Santa authentication required to reset bypass on production' });
           return true;
         }
         setStagingBypassEnabled(null);
@@ -1949,7 +1952,7 @@ export const startDevServer = ({
     if (isStripeMode && requestUrl.pathname.startsWith('/__ual/api/admin/settings')) {
       logger.info(`[devserver] Settings API: ${requestMethod} ${requestPath}`);
       try {
-        const handled = await handleAdminSettingsApi(req, res, requestUrl, logger);
+        const handled = await handleAdminSettingsApi(req, res, requestUrl, logger, stripeConfig?.mode);
         if (handled) {
           return;
         }
