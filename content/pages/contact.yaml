@@ -41,5 +41,5 @@ sections:
   - type: contact
     title: Send a Message
     body: "[Form introduction: e.g., 'Whether it's a class question, a collaboration idea, or feedback on a recipe from the journal — I'd love to hear from you.']"
-    email: "[your-email]@[domain].com"
+    email: hello@example.com
     formAction: https://formspree.io/f/[your-form-id]

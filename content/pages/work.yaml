@@ -81,4 +81,4 @@ sections:
   - type: contact
     title: Questions About Classes?
     body: "[Invite inquiries: e.g., 'Not sure which class is right for you? Curious about private lessons or group bookings for special occasions? I'm happy to help you find the right fit.']"
-    email: "[your-email]@[domain].com"
+    email: hello@example.com
