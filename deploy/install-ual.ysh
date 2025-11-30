@@ -207,6 +207,10 @@ proc install_ual {
 
     echo '=== Installing UAL ==='
 
+    # Mark directories as safe for git (ownership changes during provisioning)
+    git config --global --add safe.directory /opt/ual/staging 2>/dev/null || true
+    git config --global --add safe.directory /opt/ual/production 2>/dev/null || true
+
     # Clone or update staging
     if [ -d /opt/ual/staging/.git ]; then
       echo 'Updating staging...'
