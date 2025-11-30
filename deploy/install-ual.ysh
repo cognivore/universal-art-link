@@ -35,6 +35,9 @@ UAL_STAGING_JWT=${UAL_STAGING_JWT:-}
 RESEND_API_KEY=${RESEND_API_KEY:-}
 EMAIL_FROM=${EMAIL_FROM:-}
 UAL_SITE_NAME=${UAL_SITE_NAME:-UAL Admin}
+
+# Admin Users (comma-separated, format: email:name,email:name)
+UAL_ADMIN_EMAILS=${UAL_ADMIN_EMAILS:-}
 EOF
 }
 
@@ -56,6 +59,9 @@ UAL_MAGIC_LINK_SECRET=${UAL_MAGIC_LINK_SECRET:-}
 RESEND_API_KEY=${RESEND_API_KEY:-}
 EMAIL_FROM=${EMAIL_FROM:-}
 UAL_SITE_NAME=${UAL_SITE_NAME:-UAL Admin}
+
+# Admin Users (comma-separated, format: email:name,email:name)
+UAL_ADMIN_EMAILS=${UAL_ADMIN_EMAILS:-}
 EOF
 }
 

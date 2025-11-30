@@ -59,15 +59,55 @@ const hmacVerify = (data: string, signature: string, secret: string): boolean =>
   return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 };
 
+/**
+ * Parse admin emails from environment variable.
+ * Format: "email1:Name1,email2:Name2" or just "email1,email2" (names default to "Admin")
+ * Example: UAL_ADMIN_EMAILS=jm@memorici.de:Kartupelis,emilie.mchl@gmail.com:Pupina
+ */
+const parseAdminsFromEnv = (): Admin[] => {
+  const envAdmins = process.env.UAL_ADMIN_EMAILS;
+  if (!envAdmins) {
+    return [];
+  }
+
+  return envAdmins.split(',').map((entry) => {
+    const [email, name] = entry.trim().split(':');
+    return {
+      email: email?.trim() ?? '',
+      name: name?.trim() ?? 'Admin',
+    };
+  }).filter((a) => a.email.length > 0);
+};
+
 export const loadAdminsConfig = async (contentDir: string): Promise<AdminsConfig> => {
+  // First, get admins from environment variable (higher priority)
+  const envAdmins = parseAdminsFromEnv();
+
+  // Then load from YAML file
   const configPath = path.join(contentDir, 'auth', 'admins.yaml');
   const exists = await fs.pathExists(configPath);
-  if (!exists) {
-    return { admins: [] };
+  let yamlAdmins: Admin[] = [];
+
+  if (exists) {
+    const content = await fs.readFile(configPath, 'utf8');
+    const parsed = YAML.parse(content) as unknown;
+    const config = AdminsConfigSchema.parse(parsed);
+    yamlAdmins = config.admins;
   }
-  const content = await fs.readFile(configPath, 'utf8');
-  const parsed = YAML.parse(content) as unknown;
-  return AdminsConfigSchema.parse(parsed);
+
+  // Merge: env admins take precedence, then yaml admins (dedupe by email)
+  const allEmails = new Set<string>();
+  const mergedAdmins: Admin[] = [];
+
+  for (const admin of [...envAdmins, ...yamlAdmins]) {
+    const normalizedEmail = admin.email.toLowerCase().trim();
+    if (!allEmails.has(normalizedEmail)) {
+      allEmails.add(normalizedEmail);
+      mergedAdmins.push(admin);
+    }
+  }
+
+  return { admins: mergedAdmins };
 };
 
 export const isAuthorizedEmail = async (email: string, contentDir: string): Promise<Admin | null> => {
