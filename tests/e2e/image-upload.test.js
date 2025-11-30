@@ -112,35 +112,21 @@ describe('Image Upload Regression', () => {
     console.log(`   ✅ Uploaded to: ${uploadedAssetUrl}`);
   });
 
-  test('2. Verify uploaded image is accessible via HTTP', async () => {
+  test('2. Verify uploaded image is IMMEDIATELY accessible via HTTP', async () => {
     assert.ok(uploadedAssetUrl, 'Must have uploaded URL from previous test');
     
     const fullUrl = `${STAGING_URL}${uploadedAssetUrl}`;
     console.log(`   📥 Fetching: ${fullUrl}`);
     
-    // Try a few times with delay (in case of eventual consistency)
-    let response;
-    let attempts = 0;
-    const maxAttempts = 5;
-    
-    while (attempts < maxAttempts) {
-      attempts++;
-      response = await fetch(fullUrl);
-      
-      if (response.ok) {
-        break;
-      }
-      
-      if (attempts < maxAttempts) {
-        console.log(`   ⏳ Attempt ${attempts} returned ${response.status}, retrying...`);
-        await new Promise(r => setTimeout(r, 1000));
-      }
-    }
+    // The image MUST be accessible immediately after upload - no retries!
+    // This tests the fix for the asset fallback to source directory
+    const response = await fetch(fullUrl);
     
     assert.strictEqual(
       response.status, 
       200, 
-      `Asset not accessible after ${maxAttempts} attempts. Status: ${response.status}. URL: ${fullUrl}`
+      `Asset not accessible IMMEDIATELY after upload. Status: ${response.status}. URL: ${fullUrl}. ` +
+      `This indicates the serveStatic fallback to source assets is not working.`
     );
     
     const contentType = response.headers.get('content-type');

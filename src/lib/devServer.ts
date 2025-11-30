@@ -1502,6 +1502,7 @@ const handleAdminApi = async (
 
 type StaticOptions = {
   readonly adminAssetsDir?: string;
+  readonly sourceAssetsDir?: string; // For fallback to uploaded assets not yet in dist
   readonly runtimeConfig: AdminRuntimeConfig;
 };
 
@@ -1520,7 +1521,18 @@ const serveStatic = async (
   const normalized = relativePath === '/' ? '/index.html' : relativePath;
   let filePath = path.join(assetRoot, normalized);
 
-  const exists = await fs.pathExists(filePath);
+  let exists = await fs.pathExists(filePath);
+
+  // Fall back to source assets directory for dynamically uploaded files
+  // that haven't been copied to dist yet
+  if (!exists && decoded.startsWith('/assets/') && options.sourceAssetsDir) {
+    const sourceAssetPath = path.join(options.sourceAssetsDir, decoded.replace('/assets/', ''));
+    if (await fs.pathExists(sourceAssetPath)) {
+      filePath = sourceAssetPath;
+      exists = true;
+    }
+  }
+
   if (!exists) {
     res.statusCode = 404;
     res.end('Not found');
@@ -1998,7 +2010,11 @@ export const startDevServer = ({
 
     try {
       logger.info(`[devserver] Serving static: ${requestPath} from ${distDir}`);
-      await serveStatic(req, res, distDir, { adminAssetsDir, runtimeConfig: runtimeState });
+      await serveStatic(req, res, distDir, {
+        adminAssetsDir,
+        sourceAssetsDir: paths.assetsDir,
+        runtimeConfig: runtimeState,
+      });
     } catch (error) {
       logger.error('Error serving request', error);
       res.statusCode = 500;

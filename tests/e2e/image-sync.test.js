@@ -171,6 +171,17 @@ describe('Image Sync to Stripe', () => {
     const { url } = await response.json();
     newImageUrl = url;
     console.log(`   ✅ Uploaded new image: ${newImageUrl}`);
+
+    // CRITICAL: Verify the image is IMMEDIATELY accessible (no delay/retry)
+    // This tests the fix for serving uploaded assets before they're copied to dist
+    const fullUrl = `${TARGET_URL}${newImageUrl}`;
+    const fetchResponse = await fetch(fullUrl);
+    assert.strictEqual(
+      fetchResponse.status,
+      200,
+      `Uploaded image not immediately accessible at ${fullUrl}. Status: ${fetchResponse.status}`,
+    );
+    console.log(`   ✅ Image immediately accessible at ${fullUrl}`);
   });
 
   test('3. Update product with new image', async () => {
