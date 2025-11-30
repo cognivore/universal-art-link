@@ -166,7 +166,7 @@ describe('Stripe Promotion Flow', () => {
     // The products step should mention the webhook or export
     const productsStep = result.steps.find((s) => s.step === 'products');
     assert.ok(productsStep, 'Products step should exist');
-    
+
     // If webhook is configured, it should call production
     // If not, it will say "Stripe sync not configured"
     if (productsStep.message.includes('webhook') || productsStep.message.includes('Exported')) {

@@ -557,7 +557,18 @@ const handleStripeApi = async (
           sortOrder: body.sortOrder !== undefined ? Number(body.sortOrder) : undefined,
           metadata: body.metadata as Record<string, string> | undefined,
         };
-        const product = await updateStripeProduct(paths, productId, patch);
+        let product = await updateStripeProduct(paths, productId, patch);
+
+        // If product has Stripe IDs and sync service is available, sync changes to Stripe
+        if (stripeSyncService && product.stripeProductId) {
+          try {
+            product = await stripeSyncService.syncProductDetails(productId);
+          } catch (syncError) {
+            // Log but don't fail - local update succeeded
+            console.error('[stripe] Failed to sync product to Stripe:', syncError);
+          }
+        }
+
         return respondWithProduct(200, product);
       }
 
