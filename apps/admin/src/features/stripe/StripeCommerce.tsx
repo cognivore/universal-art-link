@@ -125,28 +125,29 @@ const SyncPanel = ({ onSyncComplete }: SyncPanelProps) => {
   const [lastResult, setLastResult] = useState<SyncResult | null>(null);
   const [syncing, setSyncing] = useState<'import' | 'export' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const config = getRuntimeConfig();
 
-  const fetchStatus = useCallback(async () => {
-    try {
-      const data = await getSyncStatus(config);
-      setStatus(data);
-      if (data.lastSync) {
-        setLastResult(data.lastSync);
-      }
-    } catch {
-      // Silently fail - sync may not be configured
-    }
-  }, [config]);
-
+  // Fetch sync status once on mount (not on every render!)
   useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const config = getRuntimeConfig();
+        const data = await getSyncStatus(config);
+        setStatus(data);
+        if (data.lastSync) {
+          setLastResult(data.lastSync);
+        }
+      } catch {
+        // Silently fail - sync may not be configured
+      }
+    };
     void fetchStatus();
-  }, [fetchStatus]);
+  }, []); // Empty deps = run once on mount
 
   const handleImport = async () => {
     try {
       setSyncing('import');
       setError(null);
+      const config = getRuntimeConfig();
       const result = await triggerImportSync(config);
       setLastResult(result);
       onSyncComplete?.();
@@ -161,6 +162,7 @@ const SyncPanel = ({ onSyncComplete }: SyncPanelProps) => {
     try {
       setSyncing('export');
       setError(null);
+      const config = getRuntimeConfig();
       const result = await triggerExportSync(config);
       setLastResult(result);
       onSyncComplete?.();
