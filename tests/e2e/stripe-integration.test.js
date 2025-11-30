@@ -21,19 +21,47 @@ if (!STAGING_JWT) {
   process.exit(1);
 }
 
-/**
- * Generate a memorable test ID like "rabbit-banana-luxury-617"
- */
+const adjectives = [
+  'swift',
+  'quiet',
+  'brave',
+  'clever',
+  'gentle',
+  'fierce',
+  'noble',
+  'bright',
+  'calm',
+  'bold',
+  'keen',
+  'warm',
+  'cool',
+  'wild',
+  'soft',
+  'sharp',
+];
+
+const nouns = [
+  'rabbit',
+  'falcon',
+  'orchid',
+  'river',
+  'crystal',
+  'thunder',
+  'velvet',
+  'maple',
+  'coral',
+  'ember',
+  'prism',
+  'lotus',
+  'cedar',
+  'bronze',
+  'silver',
+  'marble',
+];
+
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
 const generateMemorableId = () => {
-  const adjectives = [
-    'swift', 'quiet', 'brave', 'clever', 'gentle', 'fierce', 'noble', 'bright',
-    'calm', 'bold', 'keen', 'warm', 'cool', 'wild', 'soft', 'sharp',
-  ];
-  const nouns = [
-    'rabbit', 'falcon', 'orchid', 'river', 'crystal', 'thunder', 'velvet', 'maple',
-    'coral', 'ember', 'prism', 'lotus', 'cedar', 'bronze', 'silver', 'marble',
-  ];
-  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const num = Math.floor(Math.random() * 900) + 100;
   return `${pick(adjectives)}-${pick(nouns)}-${pick(nouns)}-${num}`;
 };
@@ -55,7 +83,7 @@ console.log('═'.repeat(72));
 console.log('');
 
 const createdProducts = [];
-let uploadedImageUrl = null;
+const productImages = new Map();
 let checkoutSessionId = null;
 
 const authFetch = async (url, options = {}) => {
@@ -67,25 +95,58 @@ const authFetch = async (url, options = {}) => {
   return fetch(url, { ...options, headers });
 };
 
-const createTestImageBase64 = () => {
-  const pngBytes = Buffer.from([
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-    0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-    0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
-    0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41,
-    0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0x00,
-    0x00, 0x00, 0x03, 0x00, 0x01, 0x00, 0x05, 0xfe,
-    0xd4, 0xef, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
-    0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
-  ]);
-  return pngBytes.toString('base64');
+const ensureImageState = (label) => {
+  if (!productImages.has(label)) {
+    productImages.set(label, { assetUrl: '', cdnUrl: undefined });
+  }
+  return productImages.get(label);
 };
 
-const createProductPayload = (label, index) => ({
+const hashColor = (label, variant) => {
+  const seed = `${label}-${variant}-${TEST_INVOCATION_ID}`;
+  let hash = 0;
+  for (const char of seed) {
+    hash = (hash << 5) - hash + char.charCodeAt(0);
+    hash |= 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue},70%,60%)`;
+};
+
+const createSvgAsset = (label, variant) => {
+  const color = hashColor(label, variant);
+  return `
+<svg width="400" height="400" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100%" height="100%" fill="${color}"/>
+  <text x="50%" y="50%" font-size="28" text-anchor="middle" fill="#ffffff" font-family="monospace">
+    ${label}-${variant}
+  </text>
+</svg>`.trim();
+};
+
+const uploadTestImage = async (label, variant) => {
+  const svg = createSvgAsset(label, variant);
+  const base64 = Buffer.from(svg, 'utf8').toString('base64');
+  const response = await authFetch(`${API_BASE}/assets/upload`, {
+    method: 'POST',
+    body: JSON.stringify({
+      filename: `e2e-${TEST_INVOCATION_ID}-${label}-${variant}.svg`,
+      data: base64,
+      mimeType: 'image/svg+xml',
+    }),
+  });
+  assert.strictEqual(response.status, 201, 'Upload should return 201');
+  const data = await response.json();
+  ensureImageState(label).assetUrl = data.url;
+  return data.url;
+};
+
+const isStripeCdnUrl = (url) => typeof url === 'string' && /^https:\/\/files\.stripe\.com\//.test(url);
+
+const createProductPayload = (label, index, imageUrl) => ({
   name: `E2E_${TEST_INVOCATION_ID}_Product_${label}`,
   description: `Stripe E2E product ${label} (${TEST_INVOCATION_ID})`,
-  imageUrl: uploadedImageUrl ? `${STAGING_URL}${uploadedImageUrl}` : `https://via.placeholder.com/512x512.png?text=${label}`,
+  imageUrl,
   type: 'one_time',
   priceAmountCents: 2500 + index * 500,
   currency: 'USD',
@@ -153,26 +214,17 @@ describe('Stripe Integration E2E', () => {
   });
 
   describe('2. Image Upload', () => {
-    test('upload a test image', async () => {
-      const response = await authFetch(`${API_BASE}/assets/upload`, {
-        method: 'POST',
-        body: JSON.stringify({
-          filename: `e2e-${TEST_INVOCATION_ID}.png`,
-          data: createTestImageBase64(),
-          mimeType: 'image/png',
-        }),
-      });
-      assert.strictEqual(response.status, 201);
-      const data = await response.json();
-      assert.ok(data.url);
-      uploadedImageUrl = data.url;
-      console.log(`   ✅ Uploaded image: ${uploadedImageUrl}`);
+    test('upload a test image with unique SVG art', async () => {
+      const assetUrl = await uploadTestImage('SAMPLE', 'preview');
+      assert.ok(assetUrl.startsWith('/assets/'));
+      console.log(`   ✅ Uploaded image: ${assetUrl}`);
     });
 
     test('uploaded image is publicly accessible', async () => {
-      assert.ok(uploadedImageUrl, 'Image must be uploaded first');
+      const state = ensureImageState('SAMPLE');
+      assert.ok(state?.assetUrl, 'Sample image must be uploaded first');
       await new Promise((r) => setTimeout(r, 500));
-      const response = await fetch(`${STAGING_URL}${uploadedImageUrl}`);
+      const response = await fetch(`${STAGING_URL}${state.assetUrl}`);
       assert.strictEqual(response.status, 200);
       const contentType = response.headers.get('content-type');
       assert.ok(contentType?.includes('image'));
@@ -183,9 +235,10 @@ describe('Stripe Integration E2E', () => {
   describe('3. Product Lifecycle', () => {
     test('create invocation-scoped products', async () => {
       for (const [index, label] of PRODUCT_LABELS.entries()) {
+        const assetUrl = await uploadTestImage(label, 'primary');
         const response = await authFetch(`${API_BASE}/stripe/products`, {
           method: 'POST',
-          body: JSON.stringify(createProductPayload(label, index)),
+          body: JSON.stringify(createProductPayload(label, index, assetUrl)),
         });
         assert.strictEqual(response.status, 201, `Product ${label} creation failed`);
         const data = await response.json();
@@ -194,7 +247,7 @@ describe('Stripe Integration E2E', () => {
       }
     });
 
-    test('export invocation products to Stripe live catalog', async () => {
+    test('export invocation products to Stripe live catalog (idempotent)', async () => {
       const response = await authFetch(`${API_BASE}/stripe/sync/export`, { method: 'POST' });
       assert.strictEqual(response.status, 200);
       const data = await response.json();
@@ -209,6 +262,8 @@ describe('Stripe Integration E2E', () => {
         const data = await response.json();
         assert.ok(data.stripeProductId, 'stripeProductId missing');
         assert.ok(data.stripePriceId, 'stripePriceId missing');
+        assert.ok(isStripeCdnUrl(data.imageUrl), 'Product image should use Stripe CDN');
+        ensureImageState(product.label).cdnUrl = data.imageUrl;
         product.stripeProductId = data.stripeProductId;
         product.stripePriceId = data.stripePriceId;
         console.log(`   ✅ ${product.label} -> ${product.stripeProductId}`);
@@ -219,8 +274,34 @@ describe('Stripe Integration E2E', () => {
       for (const product of createdProducts) {
         const verify = await verifyStripeProduct(product.stripeProductId, product.name);
         assert.strictEqual(verify.active, true);
+        const expectedImage = ensureImageState(product.label).cdnUrl;
+        if (expectedImage) {
+          assert.strictEqual(verify.images?.[0], expectedImage);
+        }
         console.log(`   ✅ Verified in Stripe: ${product.stripeProductId}`);
       }
+    });
+
+    test('re-uploading an image updates Stripe CDN and admin preview', async () => {
+      const target = getProductByLabel('BETA');
+      const newAssetUrl = await uploadTestImage('BETA', 'refresh');
+      const response = await authFetch(`${API_BASE}/stripe/products/${target.localId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ imageUrl: newAssetUrl }),
+      });
+      assert.strictEqual(response.status, 200);
+      const data = await response.json();
+      assert.ok(isStripeCdnUrl(data.imageUrl), 'Updated image should use Stripe CDN');
+      const state = ensureImageState('BETA');
+      assert.notStrictEqual(
+        data.imageUrl,
+        state.cdnUrl,
+        'Stripe CDN URL should change after re-upload',
+      );
+      state.cdnUrl = data.imageUrl;
+      const verify = await verifyStripeProduct(target.stripeProductId, data.name);
+      assert.strictEqual(verify.images?.[0], data.imageUrl);
+      console.log('   ✅ Reupload propagated to Stripe CDN');
     });
   });
 

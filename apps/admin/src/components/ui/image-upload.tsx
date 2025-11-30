@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
-import { Upload, Link, X, Loader2 } from 'lucide-react';
+import { Upload, X, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from './button';
-import { Input } from './input';
 import { Label } from './label';
 import { getRuntimeConfig } from '../../lib/runtime-config';
 
@@ -9,7 +8,6 @@ type ImageUploadProps = {
   value: string;
   onChange: (url: string) => void;
   label?: string;
-  placeholder?: string;
 };
 
 const getApiBase = () => {
@@ -21,9 +19,7 @@ export const ImageUpload = ({
   value,
   onChange,
   label = 'Image',
-  placeholder = '/assets/product.png or https://...',
 }: ImageUploadProps) => {
-  const [mode, setMode] = useState<'url' | 'upload'>('url');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -83,7 +79,6 @@ export const ImageUpload = ({
 
         const result = await response.json();
         onChange(result.url);
-        setMode('url'); // Switch back to URL mode to show the result
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Upload failed');
       } finally {
@@ -102,102 +97,98 @@ export const ImageUpload = ({
     setError(null);
   };
 
+  const triggerUpload = () => fileInputRef.current?.click();
+
   const isExternalUrl = value.startsWith('http://') || value.startsWith('https://');
+  const hasImage = Boolean(value);
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <Label>{label}</Label>
-        <div className="flex gap-1">
-          <Button
-            type="button"
-            variant={mode === 'url' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setMode('url')}
-            className="h-7 px-2 text-xs"
-          >
-            <Link className="mr-1 h-3 w-3" />
-            URL
-          </Button>
-          <Button
-            type="button"
-            variant={mode === 'upload' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setMode('upload')}
-            className="h-7 px-2 text-xs"
-          >
-            <Upload className="mr-1 h-3 w-3" />
-            Upload
-          </Button>
-        </div>
-      </div>
+      <Label>{label}</Label>
 
-      {/* Preview */}
-      {value && (
-        <div className="relative inline-block">
-          <img
-            src={isExternalUrl ? value : `${getApiBase()}${value}`}
-            alt="Preview"
-            className="h-24 w-24 rounded-lg border object-cover"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-            }}
-          />
-          <Button
-            type="button"
-            variant="destructive"
-            size="sm"
-            onClick={handleClear}
-            className="absolute -right-2 -top-2 h-6 w-6 rounded-full p-0"
-          >
-            <X className="h-3 w-3" />
-          </Button>
-        </div>
-      )}
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+        onChange={handleFileSelect}
+        className="hidden"
+        id="image-upload-input"
+      />
 
-      {/* URL Input Mode */}
-      {mode === 'url' && (
-        <Input
-          placeholder={placeholder}
-          value={value}
-          onChange={(e) => {
-            onChange(e.target.value);
-            setError(null);
-          }}
-        />
-      )}
-
-      {/* Upload Mode */}
-      {mode === 'upload' && (
-        <div className="flex gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
-            onChange={handleFileSelect}
-            className="hidden"
-            id="image-upload-input"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="flex-1"
-          >
-            {uploading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Uploading...
-              </>
-            ) : (
-              <>
-                <Upload className="mr-2 h-4 w-4" />
-                Choose Image
-              </>
+      {/* Preview with Replace/Remove when image exists */}
+      {hasImage ? (
+        <div className="flex items-start gap-3">
+          <div className="relative">
+            <img
+              src={isExternalUrl ? value : `${getApiBase()}${value}`}
+              alt="Preview"
+              className="h-24 w-24 rounded-lg border object-cover"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+            {isExternalUrl && (
+              <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1 text-[10px] font-medium uppercase tracking-wide text-white">
+                Stripe CDN
+              </span>
             )}
-          </Button>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={triggerUpload}
+              disabled={uploading}
+              className="h-8"
+            >
+              {uploading ? (
+                <>
+                  <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-3 w-3" />
+                  Replace
+                </>
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleClear}
+              disabled={uploading}
+              className="h-8 text-destructive hover:text-destructive"
+            >
+              <X className="mr-2 h-3 w-3" />
+              Remove
+            </Button>
+          </div>
         </div>
+      ) : (
+        /* Upload button when no image */
+        <Button
+          type="button"
+          variant="outline"
+          onClick={triggerUpload}
+          disabled={uploading}
+          className="w-full"
+        >
+          {uploading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Uploading...
+            </>
+          ) : (
+            <>
+              <Upload className="mr-2 h-4 w-4" />
+              Upload Image
+            </>
+          )}
+        </Button>
       )}
 
       {/* Error message */}
@@ -205,11 +196,8 @@ export const ImageUpload = ({
 
       {/* Help text */}
       <p className="text-xs text-muted-foreground">
-        {mode === 'url'
-          ? 'Enter a URL from Stripe, or a local path like /assets/image.png'
-          : 'Upload a JPEG, PNG, GIF, WebP, or SVG (max 5MB)'}
+        Upload a JPEG, PNG, GIF, WebP, or SVG (max 5MB). Images sync to Stripe automatically.
       </p>
     </div>
   );
 };
-

@@ -19,6 +19,7 @@ import type {
 import { generateProductId } from '../types/stripe-commerce.js';
 import type { PathConfig } from './paths.js';
 import { readStripeProducts, updateStripeProduct, createStripeProduct } from './stripeProductStore.js';
+import type { Logger } from './logger.js';
 
 export type SyncResult = {
   readonly imported: number;
@@ -39,6 +40,7 @@ export type StripeSyncService = {
   readonly importFromStripe: () => Promise<SyncResult>;
   readonly exportToStripe: (productId: string) => Promise<StripeProduct>;
   readonly exportAllToStripe: () => Promise<SyncResult>;
+  readonly syncProductDetails: (productId: string) => Promise<StripeProduct>;
   readonly getStripeClient: () => Stripe;
 };
 
@@ -87,14 +89,39 @@ const getFirstImage = (images: string[]): string | undefined => {
   return images.length > 0 ? images[0] : undefined;
 };
 
+const normalizeBaseUrl = (baseUrl: string | undefined): string | null => {
+  if (!baseUrl) return null;
+  return baseUrl.replace(/\/+$/, '');
+};
+
+const isExternalUrl = (url: string): boolean => /^https?:\/\//i.test(url);
+
 export const createStripeSyncService = (
   config: StripeConfig,
   paths: PathConfig,
+  logger: Logger,
+  options: { assetBaseUrl?: string } = {},
 ): StripeSyncService => {
   const stripe = new Stripe(config.secretKey, {
     apiVersion: '2025-02-24.acacia',
     typescript: true,
   });
+  const assetBaseUrl = normalizeBaseUrl(options.assetBaseUrl);
+
+  const resolvePublicImageUrl = (imageUrl?: string): string | undefined => {
+    if (!imageUrl) return undefined;
+    if (isExternalUrl(imageUrl)) {
+      return imageUrl;
+    }
+    if (!assetBaseUrl) {
+      logger.warn('[stripe-sync] assetBaseUrl is not configured; cannot resolve local image URL');
+      return undefined;
+    }
+    if (imageUrl.startsWith('/')) {
+      return `${assetBaseUrl}${imageUrl}`;
+    }
+    return `${assetBaseUrl}/${imageUrl}`;
+  };
 
   /**
    * Import products from Stripe into local YAML.
@@ -262,7 +289,7 @@ export const createStripeSyncService = (
     const stripeProduct = await stripe.products.create({
       name: product.name,
       description: product.description || undefined,
-      images: product.imageUrl ? [product.imageUrl] : undefined,
+      images: product.imageUrl ? [resolvePublicImageUrl(product.imageUrl) ?? product.imageUrl] : undefined,
       active: product.isActive,
       metadata: {
         ual_product_id: product.id,
@@ -290,6 +317,42 @@ export const createStripeSyncService = (
     const updated = await updateStripeProduct(paths, productId, {
       stripeProductId: stripeProduct.id,
       stripePriceId: stripePrice.id,
+      imageUrl: getFirstImage(stripeProduct.images) ?? product.imageUrl,
+    });
+
+    return updated;
+  };
+
+  /**
+   * Ensure a local product's name/description/image are mirrored in Stripe.
+   */
+  const syncProductDetails = async (productId: string): Promise<StripeProduct> => {
+    const localConfig = await readStripeProducts(paths);
+    const product = localConfig.products.find((p) => p.id === productId);
+
+    if (!product) {
+      throw new Error(`Product not found: ${productId}`);
+    }
+
+    if (!product.stripeProductId || !product.stripePriceId) {
+      return exportToStripe(productId);
+    }
+
+    const image = resolvePublicImageUrl(product.imageUrl);
+
+    const updatedStripeProduct = await stripe.products.update(product.stripeProductId, {
+      name: product.name,
+      description: product.description || undefined,
+      active: product.isActive,
+      images: image ? [image] : undefined,
+      metadata: {
+        ...(product.metadata ?? {}),
+        ual_product_id: product.id,
+      },
+    });
+
+    const updated = await updateStripeProduct(paths, productId, {
+      imageUrl: getFirstImage(updatedStripeProduct.images) ?? product.imageUrl,
     });
 
     return updated;
@@ -344,6 +407,7 @@ export const createStripeSyncService = (
     importFromStripe,
     exportToStripe,
     exportAllToStripe,
+    syncProductDetails,
     getStripeClient,
   };
 };

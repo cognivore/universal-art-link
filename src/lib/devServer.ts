@@ -62,6 +62,7 @@ import {
   type StripeMode,
   type StripeProductInput,
   type StripeProductPatch,
+  type StripeProduct,
 } from '../types/stripe-commerce.js';
 
 const mimeMap: Record<string, string> = {
@@ -411,6 +412,7 @@ const handleStripeApi = async (
   res: http.ServerResponse<http.IncomingMessage>,
   paths: PathConfig,
   stripeService: StripeService,
+  stripeSyncService: StripeSyncService | null,
   requestUrl: URL,
   baseUrl: string,
   logger: Logger,
@@ -422,6 +424,22 @@ const handleStripeApi = async (
   const subPath = requestUrl.pathname.replace('/__ual/api/stripe', '').replace(/^\/+/, '');
   const segments = subPath ? subPath.split('/').filter(Boolean) : [];
   const method = req.method ?? 'GET';
+
+  const respondWithProduct = async (status: number, product: StripeProduct): Promise<boolean> => {
+    if (!stripeSyncService) {
+      respondJson(res, status, product);
+      return true;
+    }
+    try {
+      const synced = await stripeSyncService.syncProductDetails(product.id);
+      respondJson(res, status, synced);
+      return true;
+    } catch (error) {
+      logger.error('[stripe] Failed to sync product with Stripe', error);
+      respondJson(res, 500, { error: 'Failed to sync product with Stripe' });
+      return true;
+    }
+  };
 
   try {
     // GET /__ual/api/stripe/products - List all products
@@ -456,8 +474,7 @@ const handleStripeApi = async (
         metadata: body.metadata as Record<string, string> | undefined,
       };
       const product = await createStripeProduct(paths, input);
-      respondJson(res, 201, product);
-      return true;
+      return respondWithProduct(201, product);
     }
 
     // PATCH/DELETE /__ual/api/stripe/products/:id - Update/delete product (requires auth)
@@ -495,8 +512,7 @@ const handleStripeApi = async (
           metadata: body.metadata as Record<string, string> | undefined,
         };
         const product = await updateStripeProduct(paths, productId, patch);
-        respondJson(res, 200, product);
-        return true;
+        return respondWithProduct(200, product);
       }
 
       if (method === 'DELETE') {
@@ -1304,7 +1320,7 @@ export const startDevServer = ({
       logger.info(`[devserver] Stripe service initialized (${stripeConfig!.mode} mode)`);
 
       // Initialize Stripe sync service
-      stripeSyncService = createStripeSyncService(stripeApiConfig, paths);
+      stripeSyncService = createStripeSyncService(stripeApiConfig, paths, logger, { assetBaseUrl: baseUrl });
       logger.info('[devserver] Stripe sync service initialized');
 
       // Initialize and start sync cron (if enabled)
@@ -1326,7 +1342,11 @@ export const startDevServer = ({
             publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
             webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
           };
-          liveSyncService = createStripeSyncService(liveConfig, productionPaths);
+          const productionBaseUrl =
+            process.env.UAL_PRODUCTION_BASE_URL ?? process.env.UAL_BASE_URL ?? baseUrl;
+          liveSyncService = createStripeSyncService(liveConfig, productionPaths, logger, {
+            assetBaseUrl: productionBaseUrl,
+          });
           logger.info('[devserver] Live Stripe sync service initialized for promotion');
         } catch {
           logger.warn('[devserver] Could not initialize live Stripe sync - promotion will skip product export');
@@ -1437,7 +1457,16 @@ export const startDevServer = ({
     if (isStripeMode && stripeService && requestUrl.pathname.startsWith('/__ual/api/stripe')) {
       logger.info(`[devserver] Stripe API: ${requestMethod} ${requestPath}`);
       try {
-        const handled = await handleStripeApi(req, res, paths, stripeService, requestUrl, baseUrl, logger);
+        const handled = await handleStripeApi(
+          req,
+          res,
+          paths,
+          stripeService,
+          stripeSyncService,
+          requestUrl,
+          baseUrl,
+          logger,
+        );
         if (handled) {
           return;
         }

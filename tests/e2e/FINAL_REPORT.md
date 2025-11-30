@@ -4,6 +4,13 @@
 
 All blog CMS features have been successfully implemented, manually tested, and validated via E2E tests.
 
+## Stripe Photo Pipeline (2025-11-30)
+
+- Honest Stripe E2E tests now generate unique SVG product images per run, upload them via the admin API, and verify that each product ends up with a Stripe CDN URL.
+- The backend forces every product mutation (create/update) to sync name/description/images directly to Stripe and stores the resulting CDN URL locally so previews always reference Stripe-hosted media.
+- Admin image uploads display a Stripe CDN badge for remote previews, and re-uploading an image automatically refreshes both the admin preview and the Stripe dashboard image list.
+- Re-upload workflows and CDN synchronization are covered by the updated `tests/e2e/stripe-integration.test.js`, ensuring regressions are caught automatically.
+
 ## Test Results
 
 ### E2E Test Suite Summary

@@ -424,8 +424,7 @@ const ProductPanel = ({
             label="Product Image"
             value={draft.imageUrl ?? ''}
             onChange={(url) => handleInput('imageUrl', url)}
-            placeholder="/assets/product.png or Stripe CDN URL"
-            />
+          />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
