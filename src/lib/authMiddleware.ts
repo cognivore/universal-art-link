@@ -33,15 +33,30 @@ export const isPublicPath = (pathname: string, publicPaths: ReadonlyArray<string
 };
 
 /**
- * Extract and verify user from JWT cookie.
+ * Extract JWT token from request.
+ * Checks both Authorization header (Bearer token) and cookies.
+ */
+const extractToken = (req: http.IncomingMessage): string | null => {
+  // First check Authorization header (for API/E2E testing)
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.slice(7);
+  }
+
+  // Fall back to cookie
+  const cookieHeader = req.headers.cookie;
+  return parseJwtFromCookie(cookieHeader);
+};
+
+/**
+ * Extract and verify user from JWT (cookie or Authorization header).
  * Supports both normal JWTs and staging bypass JWTs (when enabled).
  */
 export const extractUser = (
   req: http.IncomingMessage,
   authConfig: AuthConfig,
 ): JwtPayload | null => {
-  const cookieHeader = req.headers.cookie;
-  const token = parseJwtFromCookie(cookieHeader);
+  const token = extractToken(req);
   if (!token) {
     return null;
   }

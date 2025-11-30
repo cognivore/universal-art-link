@@ -49,12 +49,16 @@ proc run_e2e_tests {
   log "Using staging bypass JWT (is_santa=true) 🎅"
   log ""
 
-  # Verify staging JWT is set
-  if test -z "${UAL_STAGING_JWT:-}" {
+  # Get JWT from YSH global or environment
+  var jwt = "${UAL_STAGING_JWT:-}"
+
+  if test -z "$jwt" {
     log_error "UAL_STAGING_JWT not set - cannot run E2E tests"
     log "Generate it with: pnpm staging:jwt"
     return 1
   }
+
+  log "JWT loaded (${#jwt} chars)"
 
   # Wait a moment for services to fully start
   log "Waiting 10s for services to stabilize..."
@@ -63,9 +67,13 @@ proc run_e2e_tests {
   # Run the E2E test suite
   cd "$_this_dir/.."
 
+  # Export to environment for subprocess
+  setglobal ENV.UAL_STAGING_URL = "https://$STAGING_DOMAIN"
+  setglobal ENV.UAL_STAGING_JWT = "$jwt"
+
   var test_result = 0
   try {
-    UAL_STAGING_URL="https://$STAGING_DOMAIN" UAL_STAGING_JWT="$UAL_STAGING_JWT" pnpm test:e2e:staging
+    pnpm test:e2e:staging
   }
   setvar test_result = $?
 
