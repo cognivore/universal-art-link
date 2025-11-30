@@ -4,8 +4,11 @@ import { Switch } from '../../components/ui/switch';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { getStagingBypassState, setStagingBypass, type StagingBypassState } from '../../lib/auth-api';
+import { useAuth } from '../../hooks/useAuth';
 
 export const StagingSettings = () => {
+  const { session } = useAuth();
+  const isSanta = session?.isSanta ?? false;
   const [state, setState] = useState<StagingBypassState | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -112,6 +115,13 @@ export const StagingSettings = () => {
           </div>
         )}
 
+        {/* Non-Santa admins can only disable, not enable */}
+        {!isSanta && state?.enabled && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+            You can disable Santa bypass. Only Santa-authenticated users can re-enable it.
+          </div>
+        )}
+
         <div className="flex items-center justify-between rounded-lg border p-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -131,7 +141,7 @@ export const StagingSettings = () => {
             <Switch
               checked={state?.enabled ?? false}
               onCheckedChange={handleToggle}
-              disabled={saving}
+              disabled={saving || (!isSanta && !state?.enabled)}
             />
           </div>
         </div>
@@ -144,14 +154,16 @@ export const StagingSettings = () => {
                 The current setting overrides the environment variable. This change will be lost on server restart.
               </p>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleReset}
-              disabled={saving}
-            >
-              Reset to Default
-            </Button>
+            {isSanta && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReset}
+                disabled={saving}
+              >
+                Reset to Default
+              </Button>
+            )}
           </div>
         )}
 

@@ -868,30 +868,34 @@ const handleAdminSettingsApi = async (
     return true;
   }
 
-  const requiresSanta =
-    !isStagingBypassStateEndpoint || (isStagingBypassStateEndpoint && method !== 'GET');
-
-  if (requiresSanta && !req.user.is_santa) {
-    respondJson(res, 403, { error: 'Santa authentication required for settings' });
-    return true;
-  }
-
   try {
     // GET /__ual/api/admin/settings/staging-bypass - Get staging bypass state
-    if (requestUrl.pathname === '/__ual/api/admin/settings/staging-bypass' && method === 'GET') {
+    if (isStagingBypassStateEndpoint && method === 'GET') {
       const state = getStagingBypassState();
       respondJson(res, 200, state);
       return true;
     }
 
     // POST /__ual/api/admin/settings/staging-bypass - Toggle staging bypass
-    if (requestUrl.pathname === '/__ual/api/admin/settings/staging-bypass' && method === 'POST') {
+    // Any admin can DISABLE bypass; only Santa can ENABLE or RESET it
+    if (isStagingBypassStateEndpoint && method === 'POST') {
       const body = await readJsonBody(req);
 
       if (typeof body.enabled === 'boolean') {
+        // Disabling bypass: any admin can do this (security-safe operation)
+        // Enabling bypass: only Santa can do this (security-sensitive)
+        if (body.enabled === true && !req.user.is_santa) {
+          respondJson(res, 403, { error: 'Santa authentication required to enable bypass' });
+          return true;
+        }
         setStagingBypassEnabled(body.enabled);
         logger.info(`[settings] Staging bypass ${body.enabled ? 'enabled' : 'disabled'} by ${req.user.sub}`);
       } else if (body.enabled === null) {
+        // Resetting to env default could re-enable bypass, so require Santa
+        if (!req.user.is_santa) {
+          respondJson(res, 403, { error: 'Santa authentication required to reset bypass' });
+          return true;
+        }
         setStagingBypassEnabled(null);
         logger.info(`[settings] Staging bypass reset to env default by ${req.user.sub}`);
       } else {
@@ -901,6 +905,12 @@ const handleAdminSettingsApi = async (
 
       const state = getStagingBypassState();
       respondJson(res, 200, state);
+      return true;
+    }
+
+    // Other settings endpoints require Santa auth
+    if (!req.user.is_santa) {
+      respondJson(res, 403, { error: 'Santa authentication required for settings' });
       return true;
     }
 
