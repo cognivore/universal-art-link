@@ -89,8 +89,8 @@ export const loadAdminsConfig = async (contentDir: string): Promise<AdminsConfig
   let yamlAdmins: Admin[] = [];
 
   if (exists) {
-    const content = await fs.readFile(configPath, 'utf8');
-    const parsed = YAML.parse(content) as unknown;
+  const content = await fs.readFile(configPath, 'utf8');
+  const parsed = YAML.parse(content) as unknown;
     const config = AdminsConfigSchema.parse(parsed);
     yamlAdmins = config.admins;
   }

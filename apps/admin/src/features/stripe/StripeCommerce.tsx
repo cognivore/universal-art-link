@@ -425,7 +425,7 @@ const ProductPanel = ({
             value={draft.imageUrl ?? ''}
             onChange={(url) => handleInput('imageUrl', url)}
             placeholder="/assets/product.png or Stripe CDN URL"
-          />
+            />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -588,29 +588,29 @@ const OrdersPanel = ({ orders, onRefresh }: OrdersPanelProps) => {
               const amount = order.amountCents ?? order.amountTotalCents ?? 0;
               const quantity = order.quantity ?? 1;
               return (
-                <div
-                  key={order.id}
-                  className="flex items-center justify-between rounded-2xl border px-4 py-3"
-                >
-                  <div>
-                    <p className="font-medium">
+              <div
+                key={order.id}
+                className="flex items-center justify-between rounded-2xl border px-4 py-3"
+              >
+                <div>
+                  <p className="font-medium">
                       {order.productName}{quantity > 1 ? ` × ${quantity}` : ''}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {order.customerEmail ?? 'Guest'} ·{' '}
-                      {new Date(order.createdAt).toLocaleDateString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {order.customerEmail ?? 'Guest'} ·{' '}
+                    {new Date(order.createdAt).toLocaleDateString()}
                       {order.paymentStatus && order.paymentStatus !== 'paid' && (
                         <span className="ml-1 text-amber-600">({order.paymentStatus})</span>
                       )}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-medium">
-                      {formatPrice(amount, order.currency as Currency)}
-                    </span>
-                    <Badge className={statusColors[order.status]}>{order.status}</Badge>
-                  </div>
+                  </p>
                 </div>
+                <div className="flex items-center gap-3">
+                  <span className="font-medium">
+                      {formatPrice(amount, order.currency as Currency)}
+                  </span>
+                  <Badge className={statusColors[order.status]}>{order.status}</Badge>
+                </div>
+              </div>
               );
             })}
           </div>
