@@ -92,25 +92,34 @@ proc configure_caddy {
     # Decode and write Caddyfile
     echo '$caddyfile_b64' | base64 -d > /etc/caddy/Caddyfile
 
-    # Create log directories
+    # Create log directories with correct ownership and permissions
+    # This is CRITICAL - Caddy runs as 'caddy' user and needs write access
     mkdir -p /var/log/caddy
-    chown caddy:caddy /var/log/caddy
+    chown -R caddy:caddy /var/log/caddy
+    chmod 755 /var/log/caddy
 
     # Validate Caddyfile
     echo 'Validating Caddyfile...'
     caddy validate --config /etc/caddy/Caddyfile
 
-    # Reload Caddy
+    # Reload Caddy (restart if reload fails)
     echo 'Reloading Caddy...'
     systemctl reload caddy || systemctl restart caddy
 
+    # Wait for TLS certificates (ACME can take a moment)
+    echo 'Waiting for Caddy to obtain TLS certificates...'
+    sleep 5
+
     # Check status
-    sleep 2
     if systemctl is-active --quiet caddy; then
       echo 'Caddy is running'
+      # Show certificate status
+      echo ''
+      echo '=== TLS Certificate Status ==='
+      caddy list-modules 2>/dev/null | head -5 || true
     else
       echo 'ERROR: Caddy failed to start'
-      journalctl -u caddy --no-pager -n 20
+      journalctl -u caddy --no-pager -n 30
       exit 1
     fi
   "

@@ -114,7 +114,11 @@ proc deploy_full {
   install_ual
 
   # Step 4: Configure Caddy (TLS)
+  # Double-check DNS is still resolving correctly before ACME
   log_section "Step 4/5: Configuring TLS"
+  log "Final DNS verification before TLS provisioning..."
+  dns_check_from_server "$SERVER_IP" "$STAGING_DOMAIN" "$SERVER_IP"
+  dns_check_from_server "$SERVER_IP" "$PROD_DOMAIN" "$SERVER_IP"
   configure_caddy
 
   # Step 5: Run E2E tests against staging

@@ -150,10 +150,14 @@ proc dns_create_a_record (subdomain, ip) {
   return 1
 }
 
-proc dns_wait_for_propagation (fqdn, expected_ip; timeout=600, interval=10) {
+proc dns_wait_for_propagation (fqdn, expected_ip; timeout=600, interval=15) {
   log "Waiting for DNS propagation: $fqdn -> $expected_ip"
+  log "Checking multiple DNS resolvers for reliable propagation..."
 
   var start_ts = $(date +%s)
+
+  # Multiple DNS resolvers to check - ACME may use any of these
+  var DNS_SERVERS = :| 8.8.8.8 1.1.1.1 9.9.9.9 208.67.222.222 |
 
   while true {
     var now_ts = $(date +%s)
@@ -164,23 +168,55 @@ proc dns_wait_for_propagation (fqdn, expected_ip; timeout=600, interval=10) {
       return 1
     }
 
-    var current = ''
-    try {
-      setvar current = $(dig +short A "$fqdn" '@8.8.8.8' 2>/dev/null | head -1)
+    # Count how many resolvers see the correct IP
+    var propagated_count = 0
+    var total_count = 0
+
+    for server in @[DNS_SERVERS] {
+      setvar total_count = total_count + 1
+      var current = ''
+      try {
+        setvar current = $(dig +short A "$fqdn" "@$server" 2>/dev/null | head -1)
+      }
+
+      if test "$current" = "$expected_ip" {
+        setvar propagated_count = propagated_count + 1
+        log "[$(date +%H:%M:%S)] ✓ $server: $current"
+      } elif test -n "$current" {
+        log "[$(date +%H:%M:%S)] ✗ $server: $current (expected: $expected_ip)"
+      } else {
+        log "[$(date +%H:%M:%S)] ✗ $server: (none)"
+      }
     }
 
-    if test -n "$current" {
-      log "[$(date +%H:%M:%S)] Current: $current"
-    } else {
-      log "[$(date +%H:%M:%S)] Current: (none)"
-    }
-
-    if test "$current" = "$expected_ip" {
-      log_success "DNS propagation complete!"
+    # Require ALL resolvers to agree for robust propagation
+    if (propagated_count === total_count) {
+      log_success "DNS fully propagated across all $total_count resolvers!"
       return 0
     }
 
+    log "Propagation: $propagated_count/$total_count resolvers. Waiting ${interval}s..."
     sleep $interval
+  }
+}
+
+proc dns_check_from_server (server_ip, fqdn, expected_ip) {
+  # Verify DNS resolves correctly from the SERVER's perspective
+  # This is critical because ACME challenges query from external servers
+  log "Verifying DNS from server's perspective..."
+
+  var remote_result = ''
+  try {
+    setvar remote_result = $(ssh -o StrictHostKeyChecking=no -o BatchMode=yes "root@$server_ip" \
+      "dig +short A '$fqdn' 2>/dev/null | head -1")
+  }
+
+  if test "$remote_result" = "$expected_ip" {
+    log_success "Server sees $fqdn -> $expected_ip"
+    return 0
+  } else {
+    log_warning "Server sees $fqdn -> '$remote_result' (expected: $expected_ip)"
+    return 1
   }
 }
 
@@ -211,10 +247,19 @@ proc setup_dns (ip) {
   }
   dns_create_a_record "$prod_sub" "$ip"
 
-  # Wait for propagation
+  # Wait for propagation across multiple DNS resolvers
   log ""
+  log_section "Waiting for DNS Propagation"
   dns_wait_for_propagation "$STAGING_DOMAIN" "$ip"
   dns_wait_for_propagation "$PROD_DOMAIN" "$ip"
+
+  # Final verification from server's perspective (ACME needs this!)
+  log ""
+  log_section "Verifying DNS from Server"
+  dns_check_from_server "$ip" "$STAGING_DOMAIN" "$ip"
+  dns_check_from_server "$ip" "$PROD_DOMAIN" "$ip"
+
+  log_success "DNS fully configured and propagated"
 }
 
 # -----------------------------------------------------------------------------

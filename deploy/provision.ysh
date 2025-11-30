@@ -64,6 +64,12 @@ mkdir -p /opt/ual/staging
 mkdir -p /opt/ual/production
 mkdir -p /var/log/ual
 
+# Create Caddy log directory with proper ownership
+# Must be done BEFORE Caddy tries to write logs!
+mkdir -p /var/log/caddy
+chown -R caddy:caddy /var/log/caddy
+chmod 755 /var/log/caddy
+
 # Create UAL user
 if ! id -u ual &>/dev/null; then
   useradd -r -s /bin/false ual
