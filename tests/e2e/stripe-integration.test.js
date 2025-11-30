@@ -21,7 +21,24 @@ if (!STAGING_JWT) {
   process.exit(1);
 }
 
-const TEST_INVOCATION_ID = process.env.TEST_INVOCATION_ID ?? `e2e-${Date.now().toString(36)}`;
+/**
+ * Generate a memorable test ID like "rabbit-banana-luxury-617"
+ */
+const generateMemorableId = () => {
+  const adjectives = [
+    'swift', 'quiet', 'brave', 'clever', 'gentle', 'fierce', 'noble', 'bright',
+    'calm', 'bold', 'keen', 'warm', 'cool', 'wild', 'soft', 'sharp',
+  ];
+  const nouns = [
+    'rabbit', 'falcon', 'orchid', 'river', 'crystal', 'thunder', 'velvet', 'maple',
+    'coral', 'ember', 'prism', 'lotus', 'cedar', 'bronze', 'silver', 'marble',
+  ];
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const num = Math.floor(Math.random() * 900) + 100;
+  return `${pick(adjectives)}-${pick(nouns)}-${pick(nouns)}-${num}`;
+};
+
+const TEST_INVOCATION_ID = process.env.TEST_INVOCATION_ID ?? generateMemorableId();
 const PRODUCT_LABELS = ['ALPHA', 'BETA', 'GAMMA'];
 
 const API_BASE = `${STAGING_URL}/__ual/api`;
