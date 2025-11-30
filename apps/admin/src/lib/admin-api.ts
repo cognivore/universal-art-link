@@ -65,3 +65,107 @@ export const deploySite = async (config: AdminRuntimeConfig): Promise<DeployStat
   }));
 };
 
+// =============================================================================
+// Promotion API (Staging → Production)
+// =============================================================================
+
+export type PromotionStepResult = {
+  step: 'content' | 'assets' | 'products';
+  success: boolean;
+  message: string;
+  details?: string[];
+};
+
+export type PromotionResult = {
+  success: boolean;
+  steps: PromotionStepResult[];
+  timestamp: string;
+};
+
+export type PromotionCheck = {
+  valid: boolean;
+  message: string;
+};
+
+export const checkPromotion = async (config: AdminRuntimeConfig): Promise<PromotionCheck> => {
+  const response = await fetch(`${config.apiBaseUrl}/admin/promote/check`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+  return handleResponse<PromotionCheck>(response);
+};
+
+export const promoteAll = async (config: AdminRuntimeConfig): Promise<PromotionResult> => {
+  const response = await fetch(`${config.apiBaseUrl}/admin/promote`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  return handleResponse<PromotionResult>(response);
+};
+
+export const promoteContent = async (config: AdminRuntimeConfig): Promise<PromotionStepResult> => {
+  const response = await fetch(`${config.apiBaseUrl}/admin/promote/content`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  return handleResponse<PromotionStepResult>(response);
+};
+
+export const promoteAssets = async (config: AdminRuntimeConfig): Promise<PromotionStepResult> => {
+  const response = await fetch(`${config.apiBaseUrl}/admin/promote/assets`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  return handleResponse<PromotionStepResult>(response);
+};
+
+export const promoteProducts = async (config: AdminRuntimeConfig): Promise<PromotionStepResult> => {
+  const response = await fetch(`${config.apiBaseUrl}/admin/promote/products`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  return handleResponse<PromotionStepResult>(response);
+};
+
+// =============================================================================
+// Stripe Sync API
+// =============================================================================
+
+export type SyncResult = {
+  imported: number;
+  updated: number;
+  skipped: number;
+  exported: number;
+  errors: { message: string; productId?: string; stripeProductId?: string }[];
+  timestamp: string;
+};
+
+export type SyncStatus = {
+  cronEnabled: boolean;
+  lastSync: SyncResult | null;
+};
+
+export const getSyncStatus = async (config: AdminRuntimeConfig): Promise<SyncStatus> => {
+  const response = await fetch(`${config.apiBaseUrl}/stripe/sync`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+  return handleResponse<SyncStatus>(response);
+};
+
+export const triggerImportSync = async (config: AdminRuntimeConfig): Promise<SyncResult> => {
+  const response = await fetch(`${config.apiBaseUrl}/stripe/sync/import`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  return handleResponse<SyncResult>(response);
+};
+
+export const triggerExportSync = async (config: AdminRuntimeConfig): Promise<SyncResult> => {
+  const response = await fetch(`${config.apiBaseUrl}/stripe/sync/export`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  return handleResponse<SyncResult>(response);
+};
+

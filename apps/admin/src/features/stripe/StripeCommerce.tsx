@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { CreditCard, Package, Receipt, Plus, Trash2, RefreshCw } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { CreditCard, Package, Receipt, Plus, Trash2, RefreshCw, Download, Upload, CloudCog } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
@@ -9,7 +9,7 @@ import { Badge } from '../../components/ui/badge';
 import { cn } from '../../lib/utils';
 import { useStripeCommerce } from './useStripeCommerce';
 import { useAuth } from '../../hooks/useAuth';
-import { getStripeMode } from '../../lib/runtime-config';
+import { getRuntimeConfig, getStripeMode } from '../../lib/runtime-config';
 import {
   formatPrice,
   type StripeProduct,
@@ -18,6 +18,7 @@ import {
   type ProductType,
   type SubscriptionInterval,
 } from '../../lib/stripe-api';
+import { getSyncStatus, triggerImportSync, triggerExportSync, type SyncStatus, type SyncResult } from '../../lib/admin-api';
 
 const defaultProductInput: StripeProductInput = {
   name: '',
@@ -92,6 +93,8 @@ export const StripeCommerce = () => {
         </Card>
       )}
 
+      <SyncPanel onSyncComplete={commerce.actions.refresh} />
+
       <div className="grid gap-6 xl:grid-cols-[400px,1fr]">
         <ProductPanel
           products={commerce.state.products}
@@ -105,6 +108,164 @@ export const StripeCommerce = () => {
         <OrdersPanel orders={commerce.state.orders} onRefresh={commerce.actions.refreshOrders} />
       </div>
     </div>
+  );
+};
+
+// =============================================================================
+// Sync Panel Component
+// =============================================================================
+
+type SyncPanelProps = {
+  onSyncComplete?: () => void;
+};
+
+const SyncPanel = ({ onSyncComplete }: SyncPanelProps) => {
+  const [status, setStatus] = useState<SyncStatus | null>(null);
+  const [lastResult, setLastResult] = useState<SyncResult | null>(null);
+  const [syncing, setSyncing] = useState<'import' | 'export' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const config = getRuntimeConfig();
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const data = await getSyncStatus(config);
+      setStatus(data);
+      if (data.lastSync) {
+        setLastResult(data.lastSync);
+      }
+    } catch {
+      // Silently fail - sync may not be configured
+    }
+  }, [config]);
+
+  useEffect(() => {
+    void fetchStatus();
+  }, [fetchStatus]);
+
+  const handleImport = async () => {
+    try {
+      setSyncing('import');
+      setError(null);
+      const result = await triggerImportSync(config);
+      setLastResult(result);
+      onSyncComplete?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Import failed');
+    } finally {
+      setSyncing(null);
+    }
+  };
+
+  const handleExport = async () => {
+    try {
+      setSyncing('export');
+      setError(null);
+      const result = await triggerExportSync(config);
+      setLastResult(result);
+      onSyncComplete?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setSyncing(null);
+    }
+  };
+
+  return (
+    <Card className="bg-white/90">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <CloudCog className="h-5 w-5 text-primary" />
+          <CardDescription className="uppercase tracking-[0.35em] text-xs">Stripe Sync</CardDescription>
+        </div>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg">Sync with Stripe Dashboard</CardTitle>
+          {status?.cronEnabled && (
+            <Badge variant="outline" className="bg-emerald-50 text-emerald-700">
+              Auto-sync enabled
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleImport}
+            disabled={syncing !== null}
+          >
+            {syncing === 'import' ? (
+              <span className="flex items-center gap-2">
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                Importing...
+              </span>
+            ) : (
+              <>
+                <Download className="mr-1 h-4 w-4" />
+                Import from Stripe
+              </>
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            disabled={syncing !== null}
+          >
+            {syncing === 'export' ? (
+              <span className="flex items-center gap-2">
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                Exporting...
+              </span>
+            ) : (
+              <>
+                <Upload className="mr-1 h-4 w-4" />
+                Export to Stripe
+              </>
+            )}
+          </Button>
+        </div>
+
+        {lastResult && (
+          <div className="rounded-lg border bg-slate-50 p-3 text-sm">
+            <div className="flex items-center gap-2 font-medium">
+              Last sync:
+              <span className="text-muted-foreground">
+                {new Date(lastResult.timestamp).toLocaleString()}
+              </span>
+            </div>
+            <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
+              {lastResult.imported > 0 && (
+                <span className="text-emerald-600">+{lastResult.imported} imported</span>
+              )}
+              {lastResult.updated > 0 && (
+                <span className="text-blue-600">{lastResult.updated} updated</span>
+              )}
+              {lastResult.exported > 0 && (
+                <span className="text-purple-600">{lastResult.exported} exported</span>
+              )}
+              {lastResult.skipped > 0 && (
+                <span>{lastResult.skipped} unchanged</span>
+              )}
+              {lastResult.errors.length > 0 && (
+                <span className="text-red-600">{lastResult.errors.length} errors</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        <p className="text-xs text-muted-foreground">
+          <strong>Import:</strong> Fetch products created in Stripe Dashboard into local config.{' '}
+          <strong>Export:</strong> Create Stripe products for local products that don't have Stripe IDs yet.
+        </p>
+      </CardContent>
+    </Card>
   );
 };
 

@@ -7,6 +7,7 @@ export type AuthSession = {
     name: string;
   };
   expiresAt?: number;
+  isSanta?: boolean;
 };
 
 export type RequestLinkResponse = {
@@ -52,5 +53,44 @@ export const logout = async (): Promise<void> => {
     method: 'POST',
     credentials: 'include',
   });
+};
+
+// =============================================================================
+// Admin Settings API
+// =============================================================================
+
+export type StagingBypassState = {
+  enabled: boolean;
+  source: 'runtime' | 'env' | 'default';
+};
+
+export const getStagingBypassState = async (): Promise<StagingBypassState> => {
+  const response = await fetch(`${getApiBase()}/__ual/api/admin/settings/staging-bypass`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Failed to get staging bypass state');
+  }
+
+  return response.json();
+};
+
+export const setStagingBypass = async (enabled: boolean | null): Promise<StagingBypassState> => {
+  const response = await fetch(`${getApiBase()}/__ual/api/admin/settings/staging-bypass`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ enabled }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Failed to set staging bypass');
+  }
+
+  return response.json();
 };
 

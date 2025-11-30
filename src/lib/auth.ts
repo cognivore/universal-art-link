@@ -203,8 +203,43 @@ export const createAuthConfig = (options: {
 // Staging Bypass Authentication
 // =============================================================================
 
-export const isStagingBypassEnabled = (): boolean =>
-  process.env.UAL_STAGING_BYPASS === 'true';
+// Runtime state for staging bypass (can be toggled without restart)
+let runtimeStagingBypass: boolean | null = null;
+
+/**
+ * Check if staging bypass is enabled.
+ * Priority: runtime state > environment variable
+ */
+export const isStagingBypassEnabled = (): boolean => {
+  if (runtimeStagingBypass !== null) {
+    return runtimeStagingBypass;
+  }
+  return process.env.UAL_STAGING_BYPASS === 'true';
+};
+
+/**
+ * Toggle staging bypass at runtime.
+ * Pass null to reset to environment variable behavior.
+ */
+export const setStagingBypassEnabled = (enabled: boolean | null): void => {
+  runtimeStagingBypass = enabled;
+};
+
+/**
+ * Get current staging bypass state info for admin display.
+ */
+export const getStagingBypassState = (): {
+  enabled: boolean;
+  source: 'runtime' | 'env' | 'default';
+} => {
+  if (runtimeStagingBypass !== null) {
+    return { enabled: runtimeStagingBypass, source: 'runtime' };
+  }
+  if (process.env.UAL_STAGING_BYPASS === 'true') {
+    return { enabled: true, source: 'env' };
+  }
+  return { enabled: false, source: 'default' };
+};
 
 export const getStagingBypassJwt = (): string | null =>
   process.env.UAL_STAGING_JWT ?? null;

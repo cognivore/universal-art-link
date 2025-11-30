@@ -4,11 +4,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { ContentStudio } from './features/cms/ContentStudio';
 import { CommerceSuite } from './features/commerce/CommerceSuite';
 import { StripeCommerce } from './features/stripe/StripeCommerce';
+import { StagingSettings } from './features/settings/StagingSettings';
+import { PromotionPanel } from './features/settings/PromotionPanel';
 import { LoginPage } from './features/auth/LoginPage';
 import { useAuth } from './hooks/useAuth';
-import { isStripeMode } from './lib/runtime-config';
+import { isStripeMode, getStripeMode } from './lib/runtime-config';
 
-type AdminView = 'content' | 'commerce' | 'stripe';
+type AdminView = 'content' | 'commerce' | 'stripe' | 'settings';
 
 const LoadingSpinner = () => (
   <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-slate-100 to-slate-200">
@@ -22,6 +24,10 @@ const LoadingSpinner = () => (
 export const App = () => {
   const { session, loading, requiresAuth } = useAuth();
   const stripeMode = isStripeMode();
+  const stripeEnv = getStripeMode();
+  const isStaging = stripeEnv === 'staging';
+  const isSanta = session?.isSanta ?? false;
+  const showSettings = stripeMode && (isSanta || isStaging);
   const [view, setView] = useState<AdminView>(stripeMode ? 'stripe' : 'content');
 
   // Show loading state while checking auth
@@ -51,6 +57,14 @@ export const App = () => {
               Stripe Commerce
             </TabsTrigger>
           )}
+          {showSettings && (
+            <TabsTrigger value="settings" className="flex-1">
+              <span className="flex items-center gap-1">
+                {isSanta && <span>🎅</span>}
+                Settings
+              </span>
+            </TabsTrigger>
+          )}
         </TabsList>
         <TabsContent value="content">
           <ContentStudio />
@@ -63,6 +77,14 @@ export const App = () => {
         {stripeMode && (
           <TabsContent value="stripe">
             <StripeCommerce />
+          </TabsContent>
+        )}
+        {showSettings && (
+          <TabsContent value="settings">
+            <div className="space-y-6">
+              <StagingSettings />
+              {isSanta && <PromotionPanel />}
+            </div>
           </TabsContent>
         )}
       </Tabs>

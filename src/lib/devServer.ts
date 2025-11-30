@@ -34,10 +34,16 @@ import {
   checkIpMismatch,
   verifyStagingBypassJwt,
   isStagingBypassEnabled,
+  setStagingBypassEnabled,
+  getStagingBypassState,
   type AuthConfig,
   type JwtPayload,
 } from './auth.js';
 import { createAuthGuard, type AuthenticatedRequest } from './authMiddleware.js';
+import { createEmailService, createEmailConfig, type EmailService } from './emailService.js';
+import { createStripeSyncService, type StripeSyncService } from './stripeSyncService.js';
+import { createSyncCron, type SyncCron } from './syncCron.js';
+import { createPromotionService, createProductionPathConfig, type PromotionService } from './promotionService.js';
 import { createStripeConfig, getStripePublicConfig, validateStripeConfig } from './stripeConfig.js';
 import { createStripeService, type StripeService } from './stripeService.js';
 import {
@@ -249,6 +255,7 @@ const handleAuthApi = async (
   res: http.ServerResponse<http.IncomingMessage>,
   paths: PathConfig,
   authConfig: AuthConfig,
+  emailService: EmailService,
   requestUrl: URL,
   logger: Logger,
 ): Promise<boolean> => {
@@ -285,15 +292,24 @@ const handleAuthApi = async (
 
       // Generate magic link with IP tracking
       const magicLinkUrl = generateMagicLinkUrl(email, authConfig, clientIp);
-      // In production, you would send this via email
-      // For now, log it for development
-      logger.info(`[auth] Magic link for ${email} (IP: ${clientIp}): ${magicLinkUrl}`);
 
-      respondJson(res, 200, {
+      // Send magic link via email (or log if not configured)
+      const emailResult = await emailService.sendMagicLink(email, magicLinkUrl, admin.name);
+      if (!emailResult.sent) {
+        logger.error(`[auth] Failed to send magic link to ${email}: ${emailResult.error}`);
+      } else {
+        logger.info(`[auth] Magic link for ${email} sent via ${emailResult.provider} (IP: ${clientIp})`);
+      }
+
+      // Only include dev link in response when email is not configured (fallback to log)
+      const response: { message: string; _devMagicLink?: string } = {
         message: 'If that email is authorized, a magic link has been sent',
-        // Include URL in response only in development mode for testing
-        _devMagicLink: magicLinkUrl,
-      });
+      };
+      if (!emailService.isConfigured()) {
+        response._devMagicLink = magicLinkUrl;
+      }
+
+      respondJson(res, 200, response);
       return true;
     }
 
@@ -618,6 +634,209 @@ const handleStripeApi = async (
   }
 };
 
+const handleAdminSettingsApi = async (
+  req: AuthenticatedRequest,
+  res: http.ServerResponse<http.IncomingMessage>,
+  requestUrl: URL,
+  logger: Logger,
+): Promise<boolean> => {
+  if (!requestUrl.pathname.startsWith('/__ual/api/admin/settings')) {
+    return false;
+  }
+
+  const method = req.method ?? 'GET';
+
+  // All settings endpoints require is_santa authentication
+  if (!req.user?.is_santa) {
+    respondJson(res, 403, { error: 'Santa authentication required for settings' });
+    return true;
+  }
+
+  try {
+    // GET /__ual/api/admin/settings/staging-bypass - Get staging bypass state
+    if (requestUrl.pathname === '/__ual/api/admin/settings/staging-bypass' && method === 'GET') {
+      const state = getStagingBypassState();
+      respondJson(res, 200, state);
+      return true;
+    }
+
+    // POST /__ual/api/admin/settings/staging-bypass - Toggle staging bypass
+    if (requestUrl.pathname === '/__ual/api/admin/settings/staging-bypass' && method === 'POST') {
+      const body = await readJsonBody(req);
+
+      if (typeof body.enabled === 'boolean') {
+        setStagingBypassEnabled(body.enabled);
+        logger.info(`[settings] Staging bypass ${body.enabled ? 'enabled' : 'disabled'} by ${req.user.sub}`);
+      } else if (body.enabled === null) {
+        setStagingBypassEnabled(null);
+        logger.info(`[settings] Staging bypass reset to env default by ${req.user.sub}`);
+      } else {
+        respondJson(res, 400, { error: 'enabled must be boolean or null' });
+        return true;
+      }
+
+      const state = getStagingBypassState();
+      respondJson(res, 200, state);
+      return true;
+    }
+
+    respondJson(res, 404, { error: 'Unknown settings endpoint' });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Settings request failed';
+    logger.error('[settings] Error:', error);
+    respondJson(res, 500, { error: message });
+    return true;
+  }
+};
+
+const handleStripeSyncApi = async (
+  req: AuthenticatedRequest,
+  res: http.ServerResponse<http.IncomingMessage>,
+  syncService: StripeSyncService,
+  syncCron: SyncCron | null,
+  requestUrl: URL,
+  logger: Logger,
+): Promise<boolean> => {
+  if (!requestUrl.pathname.startsWith('/__ual/api/stripe/sync')) {
+    return false;
+  }
+
+  const method = req.method ?? 'GET';
+
+  // All sync endpoints require authentication
+  if (!req.user) {
+    respondJson(res, 401, { error: 'Authentication required' });
+    return true;
+  }
+
+  try {
+    // GET /__ual/api/stripe/sync - Get sync status and last result
+    if (requestUrl.pathname === '/__ual/api/stripe/sync' && method === 'GET') {
+      const lastResult = syncCron?.getLastResult() ?? null;
+      const cronRunning = syncCron?.isRunning() ?? false;
+
+      respondJson(res, 200, {
+        cronEnabled: cronRunning,
+        lastSync: lastResult,
+      });
+      return true;
+    }
+
+    // POST /__ual/api/stripe/sync/import - Trigger manual import from Stripe
+    if (requestUrl.pathname === '/__ual/api/stripe/sync/import' && method === 'POST') {
+      logger.info(`[sync] Manual import triggered by ${req.user.sub}`);
+      const result = await syncService.importFromStripe();
+      respondJson(res, 200, result);
+      return true;
+    }
+
+    // POST /__ual/api/stripe/sync/export - Export all products to Stripe
+    if (requestUrl.pathname === '/__ual/api/stripe/sync/export' && method === 'POST') {
+      logger.info(`[sync] Manual export triggered by ${req.user.sub}`);
+      const result = await syncService.exportAllToStripe();
+      respondJson(res, 200, result);
+      return true;
+    }
+
+    // POST /__ual/api/stripe/sync/export/:productId - Export single product to Stripe
+    if (requestUrl.pathname.startsWith('/__ual/api/stripe/sync/export/') && method === 'POST') {
+      const productId = requestUrl.pathname.split('/').pop();
+      if (!productId) {
+        respondJson(res, 400, { error: 'Product ID required' });
+        return true;
+      }
+
+      logger.info(`[sync] Exporting product ${productId} by ${req.user.sub}`);
+      const product = await syncService.exportToStripe(productId);
+      respondJson(res, 200, product);
+      return true;
+    }
+
+    respondJson(res, 404, { error: 'Unknown sync endpoint' });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Sync request failed';
+    logger.error('[sync] Error:', error);
+    respondJson(res, 500, { error: message });
+    return true;
+  }
+};
+
+const handlePromotionApi = async (
+  req: AuthenticatedRequest,
+  res: http.ServerResponse<http.IncomingMessage>,
+  promotionService: PromotionService | null,
+  requestUrl: URL,
+  logger: Logger,
+): Promise<boolean> => {
+  if (!requestUrl.pathname.startsWith('/__ual/api/admin/promote')) {
+    return false;
+  }
+
+  const method = req.method ?? 'GET';
+
+  // Promotion requires is_santa authentication
+  if (!req.user?.is_santa) {
+    respondJson(res, 403, { error: 'Santa authentication required for promotion' });
+    return true;
+  }
+
+  if (!promotionService) {
+    respondJson(res, 503, { error: 'Promotion service not configured' });
+    return true;
+  }
+
+  try {
+    // GET /__ual/api/admin/promote/check - Check if promotion is possible
+    if (requestUrl.pathname === '/__ual/api/admin/promote/check' && method === 'GET') {
+      const check = await promotionService.checkEnvironment();
+      respondJson(res, 200, check);
+      return true;
+    }
+
+    // POST /__ual/api/admin/promote - Run full promotion
+    if (requestUrl.pathname === '/__ual/api/admin/promote' && method === 'POST') {
+      logger.info(`[promotion] Full promotion triggered by ${req.user.sub}`);
+      const result = await promotionService.promoteAll();
+      respondJson(res, result.success ? 200 : 500, result);
+      return true;
+    }
+
+    // POST /__ual/api/admin/promote/content - Promote content only
+    if (requestUrl.pathname === '/__ual/api/admin/promote/content' && method === 'POST') {
+      logger.info(`[promotion] Content promotion triggered by ${req.user.sub}`);
+      const result = await promotionService.promoteContent();
+      respondJson(res, result.success ? 200 : 500, result);
+      return true;
+    }
+
+    // POST /__ual/api/admin/promote/assets - Promote assets only
+    if (requestUrl.pathname === '/__ual/api/admin/promote/assets' && method === 'POST') {
+      logger.info(`[promotion] Assets promotion triggered by ${req.user.sub}`);
+      const result = await promotionService.promoteAssets();
+      respondJson(res, result.success ? 200 : 500, result);
+      return true;
+    }
+
+    // POST /__ual/api/admin/promote/products - Promote products only
+    if (requestUrl.pathname === '/__ual/api/admin/promote/products' && method === 'POST') {
+      logger.info(`[promotion] Products promotion triggered by ${req.user.sub}`);
+      const result = await promotionService.promoteProducts();
+      respondJson(res, result.success ? 200 : 500, result);
+      return true;
+    }
+
+    respondJson(res, 404, { error: 'Unknown promotion endpoint' });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Promotion request failed';
+    logger.error('[promotion] Error:', error);
+    respondJson(res, 500, { error: message });
+    return true;
+  }
+};
+
 const handleCommerceApi = async (
   req: http.IncomingMessage,
   res: http.ServerResponse<http.IncomingMessage>,
@@ -907,6 +1126,10 @@ export const startDevServer = ({
 
   let authConfig: AuthConfig | null = null;
   let stripeService: StripeService | null = null;
+  let emailService: EmailService | null = null;
+  let stripeSyncService: StripeSyncService | null = null;
+  let syncCron: SyncCron | null = null;
+  let promotionService: PromotionService | null = null;
   let authGuard: ((req: AuthenticatedRequest, res: http.ServerResponse, pathname: string) => boolean) | null = null;
 
   if (isStripeMode) {
@@ -914,6 +1137,15 @@ export const startDevServer = ({
 
     authConfig = createAuthConfig({ baseUrl });
     authGuard = createAuthGuard(authConfig);
+
+    // Initialize email service for magic link sending
+    const emailConfig = createEmailConfig();
+    emailService = createEmailService(emailConfig);
+    if (emailService.isConfigured()) {
+      logger.info('[devserver] Email service configured (Resend)');
+    } else {
+      logger.info('[devserver] Email service not configured - magic links will be logged');
+    }
 
     try {
       const stripeApiConfig = createStripeConfig(stripeConfig!.mode);
@@ -928,6 +1160,39 @@ export const startDevServer = ({
       });
 
       logger.info(`[devserver] Stripe service initialized (${stripeConfig!.mode} mode)`);
+
+      // Initialize Stripe sync service
+      stripeSyncService = createStripeSyncService(stripeApiConfig, paths);
+      logger.info('[devserver] Stripe sync service initialized');
+
+      // Initialize and start sync cron (if enabled)
+      syncCron = createSyncCron(stripeSyncService, logger);
+      syncCron.start();
+
+      // Initialize promotion service (for staging → production sync)
+      // Only available if we're running on the server with both environments
+      const productionRoot = process.env.UAL_PRODUCTION_ROOT ?? '/opt/ual/production';
+      const productionPaths = createProductionPathConfig(productionRoot);
+
+      // Create a live sync service for production if we have live keys
+      let liveSyncService: StripeSyncService | null = null;
+      if (process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PUBLISHABLE_KEY) {
+        try {
+          const liveConfig = {
+            mode: 'production' as const,
+            secretKey: process.env.STRIPE_SECRET_KEY,
+            publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
+            webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+          };
+          liveSyncService = createStripeSyncService(liveConfig, productionPaths);
+          logger.info('[devserver] Live Stripe sync service initialized for promotion');
+        } catch {
+          logger.warn('[devserver] Could not initialize live Stripe sync - promotion will skip product export');
+        }
+      }
+
+      promotionService = createPromotionService(paths, productionPaths, liveSyncService, logger);
+      logger.info('[devserver] Promotion service initialized');
     } catch (error) {
       logger.error('[devserver] Failed to initialize Stripe:', error);
       throw error;
@@ -989,9 +1254,9 @@ export const startDevServer = ({
     }
 
     // Handle auth endpoints (only in Stripe mode)
-    if (isStripeMode && authConfig && requestUrl.pathname.startsWith('/__ual/auth')) {
+    if (isStripeMode && authConfig && emailService && requestUrl.pathname.startsWith('/__ual/auth')) {
       try {
-        const handled = await handleAuthApi(req, res, paths, authConfig, requestUrl, logger);
+        const handled = await handleAuthApi(req, res, paths, authConfig, emailService, requestUrl, logger);
         if (handled) {
           return;
         }
@@ -1022,6 +1287,51 @@ export const startDevServer = ({
       } catch (error) {
         logger.error('Stripe API failed', error);
         respondJson(res, 500, { message: 'Stripe API error' });
+        return;
+      }
+    }
+
+    // Handle admin settings API endpoints (only in Stripe mode, requires is_santa)
+    if (isStripeMode && requestUrl.pathname.startsWith('/__ual/api/admin/settings')) {
+      logger.info(`[devserver] Settings API: ${requestMethod} ${requestPath}`);
+      try {
+        const handled = await handleAdminSettingsApi(req, res, requestUrl, logger);
+        if (handled) {
+          return;
+        }
+      } catch (error) {
+        logger.error('Settings API failed', error);
+        respondJson(res, 500, { message: 'Settings API error' });
+        return;
+      }
+    }
+
+    // Handle Stripe sync API endpoints (only in Stripe mode)
+    if (isStripeMode && stripeSyncService && requestUrl.pathname.startsWith('/__ual/api/stripe/sync')) {
+      logger.info(`[devserver] Sync API: ${requestMethod} ${requestPath}`);
+      try {
+        const handled = await handleStripeSyncApi(req, res, stripeSyncService, syncCron, requestUrl, logger);
+        if (handled) {
+          return;
+        }
+      } catch (error) {
+        logger.error('Sync API failed', error);
+        respondJson(res, 500, { message: 'Sync API error' });
+        return;
+      }
+    }
+
+    // Handle promotion API endpoints (only in Stripe mode, requires is_santa)
+    if (isStripeMode && requestUrl.pathname.startsWith('/__ual/api/admin/promote')) {
+      logger.info(`[devserver] Promotion API: ${requestMethod} ${requestPath}`);
+      try {
+        const handled = await handlePromotionApi(req, res, promotionService, requestUrl, logger);
+        if (handled) {
+          return;
+        }
+      } catch (error) {
+        logger.error('Promotion API failed', error);
+        respondJson(res, 500, { message: 'Promotion API error' });
         return;
       }
     }
@@ -1070,6 +1380,12 @@ export const startDevServer = ({
   const close = async (): Promise<void> =>
     new Promise((resolve, reject) => {
       logger.info('[devserver] Closing HTTP server...');
+
+      // Stop sync cron if running
+      if (syncCron) {
+        syncCron.stop();
+      }
+
       server.close((error) => {
         if (error) {
           logger.error('[devserver] Error closing HTTP server', error);
