@@ -28,8 +28,12 @@ export const readStripeProducts = async (paths: PathConfig): Promise<StripeProdu
     return { products: [] };
   }
   const content = await fs.readFile(filePath, 'utf8');
-  const parsed = YAML.parse(content) as unknown;
-  return StripeProductsConfigSchema.parse(parsed ?? { products: [] });
+  const parsed = YAML.parse(content) as Record<string, unknown> | null;
+  // Handle empty YAML or `products: ` with no items (parses as null)
+  const normalized = {
+    products: (parsed?.products as unknown[]) ?? [],
+  };
+  return StripeProductsConfigSchema.parse(normalized);
 };
 
 const writeStripeProducts = async (paths: PathConfig, config: StripeProductsConfig): Promise<void> => {
@@ -128,8 +132,12 @@ export const readOrders = async (paths: PathConfig): Promise<OrdersConfig> => {
     return { orders: [] };
   }
   const content = await fs.readFile(filePath, 'utf8');
-  const parsed = YAML.parse(content) as unknown;
-  return OrdersConfigSchema.parse(parsed ?? { orders: [] });
+  const parsed = YAML.parse(content) as Record<string, unknown> | null;
+  // Handle empty YAML or `orders: ` with no items (parses as null)
+  const normalized = {
+    orders: (parsed?.orders as unknown[]) ?? [],
+  };
+  return OrdersConfigSchema.parse(normalized);
 };
 
 const writeOrders = async (paths: PathConfig, config: OrdersConfig): Promise<void> => {
