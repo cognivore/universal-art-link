@@ -420,7 +420,7 @@ const ProductPanel = ({
 
           <ImageUpload
             label="Product Image"
-            value={draft.imageUrl}
+            value={draft.imageUrl ?? ''}
             onChange={(url) => handleInput('imageUrl', url)}
             placeholder="/assets/product.png or Stripe CDN URL"
           />
