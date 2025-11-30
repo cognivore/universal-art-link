@@ -1,13 +1,16 @@
 import type { PropsWithChildren } from 'react';
 import { Separator } from '../ui/separator';
 import { cn } from '../../lib/utils';
+import { SantaBanner } from './SantaBanner';
 
 type AdminShellProps = PropsWithChildren<{
   className?: string;
+  onNavigateSettings?: () => void;
 }>;
 
-export const AdminShell = ({ children, className }: AdminShellProps) => (
+export const AdminShell = ({ children, className, onNavigateSettings }: AdminShellProps) => (
   <div className={cn('flex min-h-screen w-full flex-col gap-8 bg-[#f7eadf] px-6 py-10 lg:px-10', className)}>
+    <SantaBanner onNavigateSettings={onNavigateSettings} />
     <header className="space-y-3">
       <p className="uppercase tracking-[0.35em] text-xs text-muted-foreground">UAL Service Suite</p>
       <div className="flex flex-wrap items-end justify-between gap-4">

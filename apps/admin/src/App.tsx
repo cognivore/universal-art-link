@@ -40,8 +40,12 @@ export const App = () => {
     return <LoginPage />;
   }
 
+  const navigateToSettings = () => {
+    setView('settings');
+  };
+
   return (
-    <AdminShell>
+    <AdminShell onNavigateSettings={navigateToSettings}>
       <Tabs value={view} onValueChange={(value) => setView(value as AdminView)} className="flex-1">
         <TabsList className="mb-6 w-full justify-start rounded-2xl bg-white/80 p-1 shadow-sm">
           <TabsTrigger value="content" className="flex-1">

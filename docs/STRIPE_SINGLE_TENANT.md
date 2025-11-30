@@ -227,23 +227,16 @@ curl https://yourdomain.com/__ual/healthz
 
 ## Step 6: Set Up Admin Access
 
-### 6.1 Add Admin Email
+### 6.1 Configure Admin Emails
 
-Edit `content/auth/admins.yaml` to add your email address:
+Set the `UAL_ADMIN_EMAILS` environment variable (comma-separated `email:name` pairs):
 
-```yaml
-# Authorized admin email addresses for magic link authentication
-# Only emails listed here can log in to the admin panel
-
-admins:
-  - email: "you@example.com"
-    name: "Your Name"
-  # Add more admins as needed:
-  # - email: "colleague@example.com"
-  #   name: "Colleague Name"
+```bash
+# Example: two admins (Name is optional; defaults to \"Admin\")
+UAL_ADMIN_EMAILS=\"jm@memorici.de:Kartupelis,emilie.mchl@gmail.com:Pupina\"
 ```
 
-**Important:** This file controls who can access your admin panel. Anyone listed here will receive a magic link when they request one.
+Store this in `.env` (or your secret manager) before deploying. Only emails listed in `UAL_ADMIN_EMAILS` can receive magic links and log in.
 
 ### 6.2 Deploy the Update
 
@@ -371,7 +364,7 @@ journalctl -u caddy -n 50
 ### Magic Links Not Working
 
 1. Check the server logs for the magic link URL
-2. Verify your email is in `content/auth/admins.yaml`
+2. Verify your email is present in `UAL_ADMIN_EMAILS`
 3. Check the JWT and magic link secrets are set
 
 ### Stripe Webhooks Failing

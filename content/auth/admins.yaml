@@ -1,8 +1,5 @@
-# Authorized admin email addresses for magic link authentication
-# Add email addresses here to grant access to the admin panel
-# When running with --single-tenant-stripe, only these emails can log in
+# DEPRECATED: Admin access is now configured via the UAL_ADMIN_EMAILS
+# environment variable (comma-separated email:name pairs). This file is kept
+# for backwards compatibility but is no longer read by the application.
 
-admins:
-  - email: "your-email@example.com"  # Replace with your actual email
-    name: "Your Name"
-
+admins: []

@@ -803,9 +803,17 @@ const handleAdminSettingsApi = async (
   }
 
   const method = req.method ?? 'GET';
+  const isStagingBypassStateEndpoint = requestUrl.pathname === '/__ual/api/admin/settings/staging-bypass';
 
-  // All settings endpoints require is_santa authentication
-  if (!req.user?.is_santa) {
+  if (!req.user) {
+    respondJson(res, 401, { error: 'Authentication required' });
+    return true;
+  }
+
+  const requiresSanta =
+    !isStagingBypassStateEndpoint || (isStagingBypassStateEndpoint && method !== 'GET');
+
+  if (requiresSanta && !req.user.is_santa) {
     respondJson(res, 403, { error: 'Santa authentication required for settings' });
     return true;
   }

@@ -1,7 +1,4 @@
 import crypto from 'node:crypto';
-import fs from 'fs-extra';
-import path from 'node:path';
-import YAML from 'yaml';
 import { z } from 'zod';
 
 const AdminSchema = z.object({
@@ -79,35 +76,17 @@ const parseAdminsFromEnv = (): Admin[] => {
   }).filter((a) => a.email.length > 0);
 };
 
-export const loadAdminsConfig = async (contentDir: string): Promise<AdminsConfig> => {
-  // First, get admins from environment variable (higher priority)
+let warnedMissingAdmins = false;
+
+export const loadAdminsConfig = async (_contentDir: string): Promise<AdminsConfig> => {
   const envAdmins = parseAdminsFromEnv();
 
-  // Then load from YAML file
-  const configPath = path.join(contentDir, 'auth', 'admins.yaml');
-  const exists = await fs.pathExists(configPath);
-  let yamlAdmins: Admin[] = [];
-
-  if (exists) {
-  const content = await fs.readFile(configPath, 'utf8');
-  const parsed = YAML.parse(content) as unknown;
-    const config = AdminsConfigSchema.parse(parsed);
-    yamlAdmins = config.admins;
+  if (envAdmins.length === 0 && !warnedMissingAdmins) {
+    console.warn('[auth] No admins configured via UAL_ADMIN_EMAILS; magic link requests will be rejected.');
+    warnedMissingAdmins = true;
   }
 
-  // Merge: env admins take precedence, then yaml admins (dedupe by email)
-  const allEmails = new Set<string>();
-  const mergedAdmins: Admin[] = [];
-
-  for (const admin of [...envAdmins, ...yamlAdmins]) {
-    const normalizedEmail = admin.email.toLowerCase().trim();
-    if (!allEmails.has(normalizedEmail)) {
-      allEmails.add(normalizedEmail);
-      mergedAdmins.push(admin);
-    }
-  }
-
-  return { admins: mergedAdmins };
+  return { admins: envAdmins };
 };
 
 export const isAuthorizedEmail = async (email: string, contentDir: string): Promise<Admin | null> => {
@@ -195,6 +174,11 @@ export const verifyJwt = (token: string, config: AuthConfig): JwtPayload | null 
     const payload = JSON.parse(decoded) as JwtPayload;
     const now = Math.floor(Date.now() / 1000);
     if (payload.exp < now) {
+      return null;
+    }
+    // Reject Santa JWTs - they must go through verifyStagingBypassJwt()
+    // which checks if staging bypass is enabled
+    if (payload.is_santa) {
       return null;
     }
     return payload;

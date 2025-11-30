@@ -31,6 +31,33 @@ STRIPE_LIVE_WH=$(passveil show dashboard.stripe.com/okashi.school/prod/api/webho
 echo "  Fetching Resend API key..."
 RESEND=$(passveil show resend.com/cognivore@github.com/api)
 
+echo "  Fetching admin accounts..."
+ADMIN_RAW=$(passveil show okashi.school/admins || true)
+UAL_ADMIN_EMAILS=""
+if [[ -n "${ADMIN_RAW}" ]]; then
+  mapfile -t ADMIN_LINES <<< "${ADMIN_RAW}"
+  ADMIN_ENTRIES=()
+  for ((i = 0; i < ${#ADMIN_LINES[@]}; i += 2)); do
+    name=$(echo "${ADMIN_LINES[i]:-}" | xargs)
+    email=$(echo "${ADMIN_LINES[i+1]:-}" | xargs)
+    if [[ -z "${email}" ]]; then
+      continue
+    fi
+    if [[ -z "${name}" ]]; then
+      name="Admin"
+    fi
+    ADMIN_ENTRIES+=("${email}:${name}")
+  done
+  if [[ ${#ADMIN_ENTRIES[@]} -gt 0 ]]; then
+    UAL_ADMIN_EMAILS=$(IFS=,; echo "${ADMIN_ENTRIES[*]}")
+  fi
+fi
+
+if [[ -z "${UAL_ADMIN_EMAILS}" ]]; then
+  echo "❌ No admin entries resolved from passveil secret okashi.school/admins" >&2
+  exit 1
+fi
+
 echo "  Generating JWT secrets..."
 JWT_SECRET=$(openssl rand -hex 32)
 MAGIC_SECRET=$(openssl rand -hex 32)
@@ -73,6 +100,9 @@ UAL_STAGING_BYPASS=true
 # Email Service (Resend)
 RESEND_API_KEY=${RESEND}
 EMAIL_FROM=noreply@okashi-school.com
+
+# Admin Users (comma-separated email:name pairs, required)
+UAL_ADMIN_EMAILS="${UAL_ADMIN_EMAILS}"
 EOF
 
 # Generate staging JWT

@@ -107,7 +107,7 @@ export const LoginPage = () => {
                   className="h-11"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Only authorized emails in <code className="rounded bg-slate-100 px-1">content/auth/admins.yaml</code> can sign in
+                  Only emails configured via <code className="rounded bg-slate-100 px-1">UAL_ADMIN_EMAILS</code> can sign in
                 </p>
               </div>
 
