@@ -81,9 +81,13 @@ export const updateStripeProduct = async (
     throw new Error(`Product not found: ${productId}`);
   }
   const existing = config.products[index]!;
+  // Filter out undefined values from patch to avoid overwriting existing fields
+  const cleanPatch = Object.fromEntries(
+    Object.entries(patch).filter(([_, v]) => v !== undefined),
+  );
   const updated: StripeProduct = {
     ...existing,
-    ...patch,
+    ...cleanPatch,
     id: existing.id,
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
