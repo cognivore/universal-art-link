@@ -83,22 +83,69 @@ const generateTestSvg = (label) => {
 let targetProduct = null;
 let originalImageUrl = null;
 let newImageUrl = null;
+let createdProduct = false;
 
 describe('Image Sync to Stripe', () => {
-  test('1. Find a product with Stripe ID', async () => {
+  test('1. Find or create a product with Stripe ID', async () => {
     const response = await authFetch('/__ual/api/stripe/products');
     assert.strictEqual(response.status, 200, 'Should be able to list products');
 
     const { products } = await response.json();
     assert.ok(Array.isArray(products), 'Products should be an array');
-    assert.ok(products.length > 0, 'Should have at least one product');
 
     // Find a product that has a Stripe ID (already synced)
     targetProduct = products.find((p) => p.stripeProductId && p.isActive);
 
-    if (!targetProduct) {
+    if (!targetProduct && products.length > 0) {
       console.log('   ⚠️ No synced products found, using first product');
       targetProduct = products[0];
+    }
+
+    // If no products at all, create one for testing
+    if (!targetProduct) {
+      console.log('   📦 No products found, creating test product...');
+
+      // First upload an initial image
+      const initialSvg = generateTestSvg('INITIAL');
+      const initialBase64 = Buffer.from(initialSvg, 'utf8').toString('base64');
+
+      const uploadResponse = await authFetch('/__ual/api/assets/upload', {
+        method: 'POST',
+        body: JSON.stringify({
+          filename: `image-sync-initial-${TEST_RUN_ID}.svg`,
+          data: initialBase64,
+          mimeType: 'image/svg+xml',
+        }),
+      });
+      assert.strictEqual(uploadResponse.status, 201);
+      const { url: initialImageUrl } = await uploadResponse.json();
+
+      // Create the product
+      const createResponse = await authFetch('/__ual/api/stripe/products', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: `Image Sync Test ${TEST_RUN_ID}`,
+          description: 'Test product for image sync regression',
+          imageUrl: initialImageUrl,
+          type: 'one_time',
+          priceAmountCents: 100,
+          currency: 'USD',
+          isActive: true,
+        }),
+      });
+      assert.strictEqual(createResponse.status, 201, 'Product creation should succeed');
+      targetProduct = await createResponse.json();
+      createdProduct = true;
+
+      // Sync to Stripe
+      const syncResponse = await authFetch('/__ual/api/stripe/sync/export', {
+        method: 'POST',
+      });
+      assert.strictEqual(syncResponse.status, 200, 'Sync should succeed');
+
+      // Refresh the product to get Stripe IDs
+      const refreshResponse = await authFetch(`/__ual/api/stripe/products/${targetProduct.id}`);
+      targetProduct = await refreshResponse.json();
     }
 
     originalImageUrl = targetProduct.imageUrl || '';
