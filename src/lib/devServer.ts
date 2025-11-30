@@ -600,18 +600,29 @@ const handleStripeApi = async (
       }
     }
 
-    // GET /__ual/api/stripe/orders - List orders (requires auth)
+    // GET /__ual/api/stripe/orders - List checkout sessions from Stripe (requires auth)
     if (segments[0] === 'orders' && segments.length === 1 && method === 'GET') {
       if (!req.user) {
         respondJson(res, 401, { error: 'Authentication required' });
         return true;
       }
       const limit = requestUrl.searchParams.get('limit');
-      const status = requestUrl.searchParams.get('status');
-      const orders = await listOrders(paths, {
-        limit: limit ? Number(limit) : undefined,
-        status: status as 'pending' | 'completed' | 'failed' | 'refunded' | undefined,
+      const sessions = await stripeService.listCheckoutSessions({
+        limit: limit ? Number(limit) : 50,
       });
+      // Transform to order-like format for frontend compatibility
+      const orders = sessions.map((s) => ({
+        id: s.id,
+        productId: s.productId ?? 'unknown',
+        productName: s.productName ?? 'Unknown Product',
+        status: s.status === 'complete' ? 'completed' : s.status === 'expired' ? 'failed' : 'pending',
+        customerEmail: s.customerEmail,
+        amountCents: s.amountTotal,
+        currency: s.currency,
+        createdAt: s.createdAt,
+        stripeSessionId: s.id,
+        paymentStatus: s.paymentStatus,
+      }));
       respondJson(res, 200, { ok: true, orders });
       return true;
     }
@@ -629,6 +640,84 @@ const handleStripeApi = async (
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Stripe request failed';
     logger.error('[stripe] Error:', error);
+    respondJson(res, 500, { error: message });
+    return true;
+  }
+};
+
+const handleAssetUploadApi = async (
+  req: AuthenticatedRequest,
+  res: http.ServerResponse<http.IncomingMessage>,
+  paths: PathConfig,
+  requestUrl: URL,
+  logger: Logger,
+): Promise<boolean> => {
+  if (requestUrl.pathname !== '/__ual/api/assets/upload') {
+    return false;
+  }
+
+  const method = req.method ?? 'GET';
+
+  // Only POST is supported
+  if (method !== 'POST') {
+    respondJson(res, 405, { error: 'Method not allowed' });
+    return true;
+  }
+
+  // Require authentication
+  if (!req.user) {
+    respondJson(res, 401, { error: 'Authentication required' });
+    return true;
+  }
+
+  try {
+    const body = await readJsonBody(req);
+    const { filename, data, mimeType } = body as {
+      filename?: string;
+      data?: string; // base64 encoded
+      mimeType?: string;
+    };
+
+    if (!filename || !data) {
+      respondJson(res, 400, { error: 'filename and data are required' });
+      return true;
+    }
+
+    // Validate mime type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+    if (mimeType && !allowedTypes.includes(mimeType)) {
+      respondJson(res, 400, { error: 'Invalid file type. Allowed: jpeg, png, gif, webp, svg' });
+      return true;
+    }
+
+    // Sanitize filename - remove path components and special chars
+    const safeFilename = filename
+      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .replace(/\.\.+/g, '_')
+      .substring(0, 100);
+
+    // Add timestamp to avoid conflicts
+    const timestamp = Date.now();
+    const ext = path.extname(safeFilename) || '.png';
+    const baseName = path.basename(safeFilename, ext);
+    const finalFilename = `${baseName}-${timestamp}${ext}`;
+
+    // Decode base64 and save to assets directory
+    const buffer = Buffer.from(data, 'base64');
+    const assetPath = path.join(paths.assetsDir, finalFilename);
+
+    await fs.ensureDir(paths.assetsDir);
+    await fs.writeFile(assetPath, buffer);
+
+    logger.info(`[assets] Uploaded: ${finalFilename} (${buffer.length} bytes) by ${req.user.sub}`);
+
+    // Return the public URL
+    const publicUrl = `/assets/${finalFilename}`;
+    respondJson(res, 201, { url: publicUrl, filename: finalFilename });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Upload failed';
+    logger.error('[assets] Upload error:', error);
     respondJson(res, 500, { error: message });
     return true;
   }
@@ -1276,6 +1365,21 @@ export const startDevServer = ({
       }
     }
 
+    // Handle Stripe sync API endpoints (only in Stripe mode) - MUST be before general stripe handler
+    if (isStripeMode && stripeSyncService && requestUrl.pathname.startsWith('/__ual/api/stripe/sync')) {
+      logger.info(`[devserver] Sync API: ${requestMethod} ${requestPath}`);
+      try {
+        const handled = await handleStripeSyncApi(req, res, stripeSyncService, syncCron, requestUrl, logger);
+        if (handled) {
+          return;
+        }
+      } catch (error) {
+        logger.error('Sync API failed', error);
+        respondJson(res, 500, { message: 'Sync API error' });
+        return;
+      }
+    }
+
     // Handle Stripe API endpoints (only in Stripe mode)
     if (isStripeMode && stripeService && requestUrl.pathname.startsWith('/__ual/api/stripe')) {
       logger.info(`[devserver] Stripe API: ${requestMethod} ${requestPath}`);
@@ -1306,17 +1410,17 @@ export const startDevServer = ({
       }
     }
 
-    // Handle Stripe sync API endpoints (only in Stripe mode)
-    if (isStripeMode && stripeSyncService && requestUrl.pathname.startsWith('/__ual/api/stripe/sync')) {
-      logger.info(`[devserver] Sync API: ${requestMethod} ${requestPath}`);
+    // Handle asset upload API (only in Stripe mode)
+    if (isStripeMode && requestUrl.pathname === '/__ual/api/assets/upload') {
+      logger.info(`[devserver] Asset Upload: ${requestMethod} ${requestPath}`);
       try {
-        const handled = await handleStripeSyncApi(req, res, stripeSyncService, syncCron, requestUrl, logger);
+        const handled = await handleAssetUploadApi(req, res, paths, requestUrl, logger);
         if (handled) {
           return;
         }
       } catch (error) {
-        logger.error('Sync API failed', error);
-        respondJson(res, 500, { message: 'Sync API error' });
+        logger.error('Asset upload failed', error);
+        respondJson(res, 500, { message: 'Asset upload error' });
         return;
       }
     }

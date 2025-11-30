@@ -6,6 +6,7 @@ import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
+import { ImageUpload } from '../../components/ui/image-upload';
 import { cn } from '../../lib/utils';
 import { useStripeCommerce } from './useStripeCommerce';
 import { useAuth } from '../../hooks/useAuth';
@@ -417,15 +418,12 @@ const ProductPanel = ({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="product-image">Image URL</Label>
-            <Input
-              id="product-image"
-              placeholder="/assets/print-pack.svg"
-              value={draft.imageUrl}
-              onChange={(e) => handleInput('imageUrl', e.target.value)}
-            />
-          </div>
+          <ImageUpload
+            label="Product Image"
+            value={draft.imageUrl}
+            onChange={(url) => handleInput('imageUrl', url)}
+            placeholder="/assets/product.png or Stripe CDN URL"
+          />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -537,13 +535,15 @@ type OrdersPanelProps = {
   orders: Array<{
     id: string;
     productName: string;
-    quantity: number;
-    amountTotalCents: number;
-    currency: Currency;
-    customerEmail?: string;
+    quantity?: number;
+    amountCents?: number;
+    amountTotalCents?: number;
+    currency: string;
+    customerEmail?: string | null;
     status: 'pending' | 'completed' | 'failed' | 'refunded';
-    type: ProductType;
+    type?: ProductType;
     createdAt: string;
+    paymentStatus?: string;
   }>;
   onRefresh: () => Promise<void>;
 };
@@ -582,28 +582,35 @@ const OrdersPanel = ({ orders, onRefresh }: OrdersPanelProps) => {
           </div>
         ) : (
           <div className="space-y-2">
-            {orders.map((order) => (
-              <div
-                key={order.id}
-                className="flex items-center justify-between rounded-2xl border px-4 py-3"
-              >
-                <div>
-                  <p className="font-medium">
-                    {order.productName} × {order.quantity}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {order.customerEmail ?? 'Guest'} ·{' '}
-                    {new Date(order.createdAt).toLocaleDateString()}
-                  </p>
+            {orders.map((order) => {
+              const amount = order.amountCents ?? order.amountTotalCents ?? 0;
+              const quantity = order.quantity ?? 1;
+              return (
+                <div
+                  key={order.id}
+                  className="flex items-center justify-between rounded-2xl border px-4 py-3"
+                >
+                  <div>
+                    <p className="font-medium">
+                      {order.productName}{quantity > 1 ? ` × ${quantity}` : ''}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {order.customerEmail ?? 'Guest'} ·{' '}
+                      {new Date(order.createdAt).toLocaleDateString()}
+                      {order.paymentStatus && order.paymentStatus !== 'paid' && (
+                        <span className="ml-1 text-amber-600">({order.paymentStatus})</span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-medium">
+                      {formatPrice(amount, order.currency as Currency)}
+                    </span>
+                    <Badge className={statusColors[order.status]}>{order.status}</Badge>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="font-medium">
-                    {formatPrice(order.amountTotalCents, order.currency)}
-                  </span>
-                  <Badge className={statusColors[order.status]}>{order.status}</Badge>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </CardContent>

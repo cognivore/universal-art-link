@@ -45,15 +45,17 @@ export type OrderRecord = {
   stripeCustomerId?: string;
   productId: string;
   productName: string;
-  quantity: number;
-  amountTotalCents: number;
-  currency: Currency;
-  customerEmail?: string;
+  quantity?: number;
+  amountCents?: number; // From Stripe sessions
+  amountTotalCents?: number; // Legacy local orders
+  currency: string;
+  customerEmail?: string | null;
   status: 'pending' | 'completed' | 'failed' | 'refunded';
-  type: ProductType;
+  type?: ProductType;
   subscriptionId?: string;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
+  paymentStatus?: string;
 };
 
 export type ProductsResponse = {

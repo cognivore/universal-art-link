@@ -1,6 +1,18 @@
 import Stripe from 'stripe';
 import type { StripeConfig, StripeProduct, CheckoutSessionRequest, CheckoutSessionResponse } from '../types/stripe-commerce.js';
 
+export type StripeCheckoutSession = {
+  id: string;
+  status: 'open' | 'complete' | 'expired';
+  customerEmail: string | null;
+  amountTotal: number;
+  currency: string;
+  createdAt: string;
+  productName: string | null;
+  productId: string | null;
+  paymentStatus: string;
+};
+
 export type StripeService = {
   readonly createCheckoutSession: (
     product: StripeProduct,
@@ -15,6 +27,7 @@ export type StripeService = {
   readonly retrieveSubscription: (subscriptionId: string) => Promise<Stripe.Subscription>;
   readonly cancelSubscription: (subscriptionId: string) => Promise<Stripe.Subscription>;
   readonly getPublishableKey: () => string;
+  readonly listCheckoutSessions: (options?: { limit?: number }) => Promise<StripeCheckoutSession[]>;
 };
 
 export const createStripeService = (config: StripeConfig): StripeService => {
@@ -101,6 +114,30 @@ export const createStripeService = (config: StripeConfig): StripeService => {
 
   const getPublishableKey = (): string => config.publishableKey;
 
+  const listCheckoutSessions = async (
+    options: { limit?: number } = {},
+  ): Promise<StripeCheckoutSession[]> => {
+    const sessions = await stripe.checkout.sessions.list({
+      limit: options.limit ?? 50,
+      expand: ['data.line_items'],
+    });
+
+    return sessions.data.map((session) => {
+      const lineItem = session.line_items?.data[0];
+      return {
+        id: session.id,
+        status: session.status ?? 'expired',
+        customerEmail: session.customer_email ?? session.customer_details?.email ?? null,
+        amountTotal: session.amount_total ?? 0,
+        currency: session.currency?.toUpperCase() ?? 'USD',
+        createdAt: new Date(session.created * 1000).toISOString(),
+        productName: lineItem?.description ?? session.metadata?.ual_product_name ?? null,
+        productId: session.metadata?.ual_product_id ?? null,
+        paymentStatus: session.payment_status,
+      };
+    });
+  };
+
   return {
     createCheckoutSession,
     constructWebhookEvent,
@@ -108,6 +145,7 @@ export const createStripeService = (config: StripeConfig): StripeService => {
     retrieveSubscription,
     cancelSubscription,
     getPublishableKey,
+    listCheckoutSessions,
   };
 };
 
