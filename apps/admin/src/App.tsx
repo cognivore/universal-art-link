@@ -89,8 +89,8 @@ export const App = () => {
         {showSettings && (
           <TabsContent value="settings">
             <div className="space-y-6">
-              {/* Santa settings - only show to Santa users or on staging */}
-              {(isSanta || isStaging) && <StagingSettings />}
+              {/* Santa settings - always visible so any admin can disable bypass */}
+              <StagingSettings />
               {/* On staging: show promotion panel to push to production */}
               {isStaging && <PromotionPanel />}
               {/* On both staging and production: show snapshots panel */}
