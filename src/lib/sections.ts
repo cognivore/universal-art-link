@@ -206,7 +206,7 @@ const renderContact = (section: Section & { type: 'contact' }, options: RenderOp
         <span class="micro-label">Message</span>
         <textarea name="message" rows="4" required></textarea>
       </label>
-      <button type="submit" class="btn btn--ghost">Send</button>
+      <button type="submit" class="btn btn--solid">Send</button>
     </form>`)}
   </section>`;
 };
