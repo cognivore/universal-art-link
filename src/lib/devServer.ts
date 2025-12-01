@@ -2009,21 +2009,7 @@ export const startDevServer = ({
       }
     }
 
-    if (requestUrl.pathname.startsWith('/__ual/api')) {
-      logger.info(`[devserver] Admin API: ${requestMethod} ${requestPath}`);
-      try {
-        const handled = await handleAdminApi(req, res, adminService, paths);
-        if (handled) {
-          return;
-        }
-      } catch (error) {
-        logger.error('Admin API failed', error);
-        respondJson(res, 500, { message: 'Admin API error' });
-        return;
-      }
-    }
-
-    // Handle contact form submissions (public endpoint)
+    // Handle contact form submissions (public endpoint) - BEFORE general admin API
     if (requestUrl.pathname === '/__ual/api/contact') {
       logger.info(`[devserver] Contact API: ${requestMethod} ${requestPath}`);
       try {
@@ -2039,6 +2025,20 @@ export const startDevServer = ({
       } catch (error) {
         logger.error('Contact API failed', error);
         respondJson(res, 500, { message: 'Contact API error' });
+        return;
+      }
+    }
+
+    if (requestUrl.pathname.startsWith('/__ual/api')) {
+      logger.info(`[devserver] Admin API: ${requestMethod} ${requestPath}`);
+      try {
+        const handled = await handleAdminApi(req, res, adminService, paths);
+        if (handled) {
+          return;
+        }
+      } catch (error) {
+        logger.error('Admin API failed', error);
+        respondJson(res, 500, { message: 'Admin API error' });
         return;
       }
     }
