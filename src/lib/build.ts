@@ -60,6 +60,10 @@ const createLinkResolver = (depth: number) => (href: string): string => {
   if (/^(https?:|mailto:|tel:|#)/.test(href)) {
     return href;
   }
+  // API endpoints should not be transformed to page paths
+  if (href.startsWith('/__ual/')) {
+    return href;
+  }
   if (href.startsWith('/')) {
     return slugToHref(href, depth);
   }
