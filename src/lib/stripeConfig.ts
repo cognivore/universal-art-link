@@ -85,3 +85,4 @@ export const getStripePublicConfig = (config: StripeConfig): { mode: StripeMode;
   publishableKey: config.publishableKey,
 });
 
+

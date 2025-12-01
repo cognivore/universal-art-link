@@ -103,6 +103,7 @@ export const DEFAULT_PUBLIC_PATHS: ReadonlyArray<string> = [
   '/__ual/api/stripe/checkout',
   '/__ual/api/stripe/config',
   '/__ual/api/stripe/webhook',
+  '/__ual/api/contact',
   '/__ual/live',
   '/__ual/runtime',
 ];

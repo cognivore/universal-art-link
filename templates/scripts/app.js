@@ -31,6 +31,7 @@ window.addEventListener('DOMContentLoaded', () => {
   initNavToggle();
   initIntersectAnimations();
   initCommerceSuite();
+  initContactForms();
 });
 
 const STORAGE_KEY = 'ual:commerce-cart';
@@ -545,5 +546,109 @@ const attachCartHandlers = (cart, renderFn) => {
       renderFn();
     });
   });
+};
+
+// ---------------------------------------------------------------------------
+// Contact Form Enhancement
+// ---------------------------------------------------------------------------
+
+const initContactForms = () => {
+  const forms = document.querySelectorAll('[data-contact-form]');
+  if (!forms.length) return;
+
+  forms.forEach((form) => {
+    // Populate hidden page context fields
+    const pageUrlInput = form.querySelector('[data-contact-page-url]');
+    const pageTitleInput = form.querySelector('[data-contact-page-title]');
+    if (pageUrlInput) pageUrlInput.value = window.location.href;
+    if (pageTitleInput) pageTitleInput.value = document.title;
+
+    // Check for URL params indicating a redirect result
+    const params = new URLSearchParams(window.location.search);
+    const contactResult = params.get('contact');
+    if (contactResult) {
+      const statusEl = form.querySelector('[data-contact-status]');
+      if (statusEl) {
+        if (contactResult === 'success') {
+          showContactStatus(statusEl, 'success', 'Thank you! Your message has been sent.');
+        } else if (contactResult === 'error') {
+          showContactStatus(statusEl, 'error', 'Something went wrong. Please try again or email directly.');
+        }
+      }
+      // Clean URL without reloading
+      const cleanUrl = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, '', cleanUrl);
+    }
+
+    // Progressive enhancement: AJAX submission
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      const submitBtn = form.querySelector('button[type="submit"]');
+      const statusEl = form.querySelector('[data-contact-status]');
+      const originalText = submitBtn ? submitBtn.textContent : 'Send';
+
+      // Disable form during submission
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Sending...';
+      }
+      hideContactStatus(statusEl);
+
+      // Gather form data as JSON
+      const formData = new FormData(form);
+      const payload = {};
+      for (const [key, value] of formData.entries()) {
+        payload[key] = value;
+      }
+
+      try {
+        const response = await fetch(form.action, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+          showContactStatus(statusEl, 'success', 'Thank you! Your message has been sent.');
+          form.reset();
+          // Re-populate hidden fields after reset
+          if (pageUrlInput) pageUrlInput.value = window.location.href;
+          if (pageTitleInput) pageTitleInput.value = document.title;
+        } else {
+          const errorMsg = result.error || 'Something went wrong. Please try again.';
+          showContactStatus(statusEl, 'error', errorMsg);
+        }
+      } catch (error) {
+        console.error('[contact] Submission failed:', error);
+        showContactStatus(statusEl, 'error', 'Network error. Please check your connection and try again.');
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = originalText;
+        }
+      }
+    });
+  });
+};
+
+const showContactStatus = (el, type, message) => {
+  if (!el) return;
+  el.hidden = false;
+  el.textContent = message;
+  el.className = 'contact__form-status';
+  el.classList.add(type === 'success' ? 'contact__form-status--success' : 'contact__form-status--error');
+};
+
+const hideContactStatus = (el) => {
+  if (!el) return;
+  el.hidden = true;
+  el.textContent = '';
+  el.className = 'contact__form-status';
 };
 

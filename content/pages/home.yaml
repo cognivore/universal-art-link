@@ -80,4 +80,4 @@ sections:
     title: "[Call to action, e.g., 'Ready to Begin?' or 'Let's Bake Together']"
     body: "[Describe what happens when someone reaches out: e.g., 'Whether you're curious about a workshop, want to discuss private lessons, or have questions about shipping pastries — I'd love to hear from you. I respond to every message within 48 hours.']"
     email: hello@example.com
-    formAction: https://formspree.io/f/[your-form-id]
+    formAction: /__ual/api/contact

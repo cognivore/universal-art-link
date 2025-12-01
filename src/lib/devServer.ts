@@ -70,6 +70,7 @@ import {
   type StripeProductPatch,
   type StripeProduct,
 } from '../types/stripe-commerce.js';
+import { handleContactApi } from './contactApi.js';
 
 const mimeMap: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -2018,6 +2019,26 @@ export const startDevServer = ({
       } catch (error) {
         logger.error('Admin API failed', error);
         respondJson(res, 500, { message: 'Admin API error' });
+        return;
+      }
+    }
+
+    // Handle contact form submissions (public endpoint)
+    if (requestUrl.pathname === '/__ual/api/contact') {
+      logger.info(`[devserver] Contact API: ${requestMethod} ${requestPath}`);
+      try {
+        const emailConfig = createEmailConfig();
+        const handled = await handleContactApi(req, res, requestUrl, {
+          contentDir: paths.contentDir,
+          emailConfig,
+          logger,
+        });
+        if (handled) {
+          return;
+        }
+      } catch (error) {
+        logger.error('Contact API failed', error);
+        respondJson(res, 500, { message: 'Contact API error' });
         return;
       }
     }

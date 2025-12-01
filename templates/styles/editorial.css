@@ -533,6 +533,29 @@ a {
   font-family: inherit;
 }
 
+.contact__form-status {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.contact__form-status--success {
+  background: color-mix(in srgb, #22c55e 15%, var(--bg) 85%);
+  color: #166534;
+  border: 1px solid color-mix(in srgb, #22c55e 30%, transparent);
+}
+
+.contact__form-status--error {
+  background: color-mix(in srgb, #ef4444 15%, var(--bg) 85%);
+  color: #b91c1c;
+  border: 1px solid color-mix(in srgb, #ef4444 30%, transparent);
+}
+
+.contact__form button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .site-footer {
   display: flex;
   justify-content: space-between;

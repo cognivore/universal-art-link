@@ -193,7 +193,9 @@ const renderContact = (section: Section & { type: 'contact' }, options: RenderOp
     <h2 class="display-sm">${escapeHtml(section.title)}</h2>
     <p class="measure">${escapeHtml(section.body)}</p>
     <a class="btn btn--solid" href="${escapeHtml(emailHref)}">${escapeHtml(section.email)}</a>
-    ${optional(Boolean(section.formAction), () => `<form class="contact__form" action="${escapeHtml(options.resolveLink(section.formAction ?? ''))}" method="post">
+    ${optional(Boolean(section.formAction), () => `<form class="contact__form" action="${escapeHtml(options.resolveLink(section.formAction ?? ''))}" method="post" data-contact-form>
+      <input type="hidden" name="pageUrl" value="" data-contact-page-url />
+      <input type="hidden" name="pageTitle" value="" data-contact-page-title />
       <label>
         <span class="micro-label">Name</span>
         <input type="text" name="name" required />
@@ -206,6 +208,7 @@ const renderContact = (section: Section & { type: 'contact' }, options: RenderOp
         <span class="micro-label">Message</span>
         <textarea name="message" rows="4" required></textarea>
       </label>
+      <div class="contact__form-status" data-contact-status hidden></div>
       <button type="submit" class="btn btn--solid">Send</button>
     </form>`)}
   </section>`;
