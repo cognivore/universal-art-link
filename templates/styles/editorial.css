@@ -17,12 +17,14 @@
 
 html {
   font-size: 16px;
+  overflow-x: clip;
 }
 
 body {
   margin: 0;
   font-family: var(--font-body);
   background-color: var(--bg);
+  overflow-x: clip;
   color: var(--fg);
   min-height: 100vh;
   line-height: 1.5;
@@ -64,18 +66,17 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-md);
-  padding-bottom: var(--space-lg);
+  padding: var(--space-md) 0 var(--space-lg);
   border-bottom: 1px solid var(--delineator-color);
   position: sticky;
   top: 0;
-  background-color: var(--bg);
-  background-image: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--bg) 96%, transparent),
-    color-mix(in srgb, var(--bg) 80%, transparent)
-  );
-  backdrop-filter: blur(6px);
-  z-index: 10;
+  background: var(--bg);
+  z-index: 100;
+}
+
+/* Ensure content doesn't overlap with sticky header */
+.site-header + * {
+  margin-top: var(--space-md);
 }
 
 .site-header__brand {
@@ -645,39 +646,38 @@ a {
     max-width: 100%;
   }
 
-  /* Full-bleed images on project pages - edge to edge viewport */
+  .project-block {
+    max-width: 100%;
+  }
+
   .project-block > figure,
   .project-block > .ual-media {
-    width: 100vw;
-    position: relative;
-    left: 50%;
-    right: 50%;
-    margin-left: -50vw;
-    margin-right: -50vw;
+    max-width: 100%;
   }
 
   .project-block > figure img {
-    width: 100%;
+    max-width: 100%;
+    height: auto;
     display: block;
   }
 }
 
-/* Full-bleed for project blocks on desktop - same technique */
-@media (min-width: var(--bp-md)) {
-  .project-block > figure,
-  .project-block > .ual-media {
-    width: 100vw;
-    position: relative;
-    left: 50%;
-    right: 50%;
-    margin-left: -50vw;
-    margin-right: -50vw;
-  }
+/* Images stay within content column */
+.project-block,
+.project-block > figure,
+.project-block > .ual-media {
+  max-width: 100%;
+  overflow: hidden;
+}
 
-  .project-block > figure img {
-    width: 100%;
-    display: block;
-  }
+.project-block figure img,
+.project-block .ual-media img,
+.ual-media img {
+  max-width: 100%;
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
 }
 
 .layout-index .site-main {

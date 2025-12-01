@@ -35,7 +35,7 @@ sections:
           src: /assets/project-orbit.svg
           alt: "[Describe: e.g., 'Seasonal wagashi arranged on a ceramic plate']"
           focalPoint: center
-        slug: /foundations-of-wagashi
+        slug: /signature-course
         span: wide
       - title: "[Second Class, e.g., 'Japanese Bakery Essentials']"
         role: "[Class type, e.g., '3-Session Series']"

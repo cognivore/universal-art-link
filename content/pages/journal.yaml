@@ -1,110 +1,101 @@
-# Journal/Blog Page for Japanese Pastry Chef & Educator
-# Inspired by: Kaori Ishibashi, Fumiko Kono, Niki Nakayama, Sadaharu Aoki
+# Journal/Blog Page
 
 slug: /journal
 title: Journal
 layout: journal
 
 journalPosts:
-  - id: post-seasonal-wagashi
-    title: "[Post Title, e.g., 'Spring Wagashi — Reading the Season']"
-    slug: /journal/spring-wagashi
-    excerpt: "[Brief teaser that makes readers want to click: e.g., 'How I plan my seasonal wagashi calendar, and why the first cherry blossom isn't always the right moment to start.']"
+  - id: post-1
+    title: "[Your post title]"
+    slug: /journal/post-1
+    excerpt: "[Brief teaser]"
     publishedAt: 2025-03-15
     coverImage:
       src: /assets/project-orbit-1.svg
-      alt: "[Describe: e.g., 'Pink and white nerikiri arranged on a black lacquer tray']"
+      alt: "[Image description]"
     blocks:
       - type: text
-        title: "[Section heading, e.g., 'Timing the Season']"
+        title: "[Section heading]"
         body: |
-          [Write about seasonal awareness in wagashi: How do you decide when spring begins for your pastries? What natural signs do you watch for? How does this differ from Western seasonal baking?
-
-          Share a specific story — perhaps a year when you started too early, or a customer who taught you something about patience. Make it personal and practical.]
+          Share specific moments, not general advice. When something goes wrong, explain what it taught you. Let your process show — the decisions, the doubts, the adjustments. Write as if explaining to someone in the room with you.
       - type: image
         media:
           src: /assets/project-orbit-2.svg
-          alt: "[Describe: e.g., 'Progression of cherry blossom wagashi from bud to full bloom']"
-        caption: "[Descriptive caption, e.g., 'The same design evolves week by week as the season deepens.']"
+          alt: "[Image description]"
+        caption: "[Caption]"
 
-  - id: post-azuki-guide
-    title: "[Post Title, e.g., 'The Azuki Primer — Choosing, Cooking, Transforming']"
-    slug: /journal/azuki-primer
-    excerpt: "[Teaser: e.g., 'Everything I wish someone had told me about red beans before I ruined my first fifty batches of anko.']"
+  - id: post-2
+    title: "[Your post title]"
+    slug: /journal/post-2
+    excerpt: "[Brief teaser]"
     publishedAt: 2025-02-01
     coverImage:
       src: /assets/project-orbit-3.svg
-      alt: "[Describe: e.g., 'Dried azuki beans beside finished tsubuan and koshian']"
+      alt: "[Image description]"
       focalPoint: right
     blocks:
       - type: image-grid
         items:
           - media:
               src: /assets/project-orbit-1.svg
-              alt: "[Describe: e.g., 'Dried Hokkaido azuki beans']"
+              alt: "[Image description]"
               focalPoint: center
-            caption: "[Caption: e.g., 'Dainagon azuki — larger, holds shape better for tsubuan']"
+            caption: "[Caption]"
           - media:
               src: /assets/project-orbit-2.svg
-              alt: "[Describe: e.g., 'Beans soaking in water']"
+              alt: "[Image description]"
               focalPoint: center
-            caption: "[Caption: e.g., 'Overnight soak — the step most recipes skip but shouldn't']"
+            caption: "[Caption]"
           - media:
               src: /assets/project-orbit-3.svg
-              alt: "[Describe: e.g., 'Finished smooth koshian']"
+              alt: "[Image description]"
               focalPoint: right
-            caption: "[Caption: e.g., 'Koshian strained three times for silk texture']"
+            caption: "[Caption]"
       - type: text
-        title: "[Section heading, e.g., 'Why Bean Quality Matters']"
+        title: "[Section heading]"
         body: |
-          [Write about azuki sourcing and quality: Where do you source your beans? What's the difference between commodity and specialty azuki? How does freshness affect cooking time and flavor?
-
-          Include practical tips — signs of good beans, storage advice, brands you trust. Be specific and opinionated.]
+          Share specific moments, not general advice. When something goes wrong, explain what it taught you. Let your process show — the decisions, the doubts, the adjustments. Write as if explaining to someone in the room with you.
       - type: quote
-        quote: "[A memorable quote about patience, craft, or ingredients — either your own words or from a teacher/mentor who influenced you]"
+        quote: "[Quote text]"
         cite: "[Attribution]"
       - type: text
-        title: "[Section heading, e.g., 'The Cooking Process']"
+        title: "[Section heading]"
         body: |
-          [Walk through your anko-making process: What's your water ratio? How do you know when beans are done? What's the difference between tsubuan and koshian in your practice?
+          Share specific moments, not general advice. When something goes wrong, explain what it taught you. Let your process show — the decisions, the doubts, the adjustments. Write as if explaining to someone in the room with you.
 
-          Share at least one mistake you made learning this and what it taught you.]
-
-  - id: post-teaching-philosophy
-    title: "[Post Title, e.g., 'Why I Teach Small Classes']"
-    slug: /journal/why-small-classes
-    excerpt: "[Teaser: e.g., 'Six students maximum, and the real reason has nothing to do with kitchen space.']"
+  - id: post-3
+    title: "[Your post title]"
+    slug: /journal/post-3
+    excerpt: "[Brief teaser]"
     publishedAt: 2025-01-10
     coverImage:
       src: /assets/project-resonant.svg
-      alt: "[Describe: e.g., 'Students gathered around a work table, hands in dough']"
+      alt: "[Image description]"
     blocks:
       - type: text
-        title: "[Opening section title, e.g., 'The Factory Model Doesn't Work']"
+        title: "[Section heading]"
         body: |
-          [Write about your teaching philosophy: Why do you limit class sizes? What happens in a small class that can't happen in a large one? What did you learn from your own teachers about attention and presence?
-
-          Share a specific teaching moment that crystallized this for you — a student breakthrough, a question that changed how you explained something, a failure that taught you to slow down.]
+          Share specific moments, not general advice. When something goes wrong, explain what it taught you. Let your process show — the decisions, the doubts, the adjustments. Write as if explaining to someone in the room with you.
       - type: image-grid
         items:
           - media:
               src: /assets/project-signal.svg
-              alt: "[Describe: e.g., 'Hands shaping mochi']"
-            caption: "[Caption: e.g., 'The moment when muscle memory clicks — you can see it happen.']"
+              alt: "[Image description]"
+            caption: "[Caption]"
           - media:
               src: /assets/project-dawn.svg
-              alt: "[Describe: e.g., 'Student's first successful shokupan']"
-            caption: "[Caption: e.g., 'Every first loaf gets photographed. Non-negotiable studio rule.']"
+              alt: "[Image description]"
+            caption: "[Caption]"
 
 sections:
   - type: hero
     kicker: Journal
-    title: "[Your journal tagline, e.g., 'Recipes, techniques, and the stories behind the pastries.']"
-    subtitle: "[Describe what readers will find: e.g., 'Notes from the studio — seasonal menus, ingredient deep-dives, teaching observations, and occasional recipes for home bakers.']"
+    title: journal
+    subtitle: "[What readers will find here]"
 
   - type: blog-roll
     title: Recent Posts
     posts:
-      - postId: post-seasonal-wagashi
-      - postId: post-azuki-guide
-      - postId: post-teaching-philosophy
+      - postId: post-1
+      - postId: post-2
+      - postId: post-3

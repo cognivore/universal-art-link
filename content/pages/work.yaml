@@ -20,7 +20,7 @@ sections:
         coverImage:
           src: /assets/project-orbit.svg
           alt: "[Describe: e.g., 'Seasonal nerikiri shaped like cherry blossoms']"
-        slug: /foundations-of-wagashi
+        slug: /signature-course
         span: wide
 
       - title: "[Japanese Bakery Class, e.g., 'Japanese Bakery Essentials']"
