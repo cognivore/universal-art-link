@@ -524,6 +524,18 @@ a {
   gap: var(--space-sm);
 }
 
+/* Honeypot field: hidden from humans, bots fill it out */
+.contact__honeypot {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  opacity: 0;
+  pointer-events: none;
+  height: 0;
+  width: 0;
+  overflow: hidden;
+}
+
 .contact__form input,
 .contact__form textarea {
   width: 100%;

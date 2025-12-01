@@ -196,6 +196,14 @@ const renderContact = (section: Section & { type: 'contact' }, options: RenderOp
     ${optional(Boolean(section.formAction), () => `<form class="contact__form" action="${escapeHtml(options.resolveLink(section.formAction ?? ''))}" method="post" data-contact-form>
       <input type="hidden" name="pageUrl" value="" data-contact-page-url />
       <input type="hidden" name="pageTitle" value="" data-contact-page-title />
+      <input type="hidden" name="_loaded_at" value="" data-contact-loaded-at />
+      <!-- Honeypot field: hidden from humans, bots fill it out -->
+      <div class="contact__honeypot" aria-hidden="true">
+        <label>
+          <span>Website</span>
+          <input type="text" name="_gotcha" tabindex="-1" autocomplete="off" />
+        </label>
+      </div>
       <label>
         <span class="micro-label">Name</span>
         <input type="text" name="name" required />

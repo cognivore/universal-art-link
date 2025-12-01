@@ -3,6 +3,11 @@
  *
  * Accepts contact form submissions and forwards them to all configured admins
  * via email. Supports both JSON and URL-encoded form data.
+ *
+ * Spam Prevention:
+ * - Honeypot field: hidden field that bots fill out, humans don't see
+ * - Time-based check: reject submissions faster than MIN_SUBMISSION_TIME_MS
+ * - IP rate limiting: max RATE_LIMIT_MAX submissions per RATE_LIMIT_WINDOW_MS
  */
 
 import type http from 'node:http';
@@ -10,6 +15,38 @@ import { z } from 'zod';
 import { loadAdminsConfig, getClientIp } from './auth.js';
 import type { EmailConfig } from './emailService.js';
 import type { Logger } from './logger.js';
+
+// ---------------------------------------------------------------------------
+// Spam Prevention Configuration
+// ---------------------------------------------------------------------------
+
+/** Minimum time (ms) between form load and submission. Bots submit instantly. */
+const MIN_SUBMISSION_TIME_MS = 3000; // 3 seconds
+
+/** Rate limit window in milliseconds */
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+/** Maximum submissions per IP within the rate limit window */
+const RATE_LIMIT_MAX = 5;
+
+/** In-memory rate limit store (IP -> timestamps of recent submissions) */
+const rateLimitStore = new Map<string, number[]>();
+
+/** Clean up old rate limit entries periodically */
+const cleanupRateLimitStore = (): void => {
+  const now = Date.now();
+  for (const [ip, timestamps] of rateLimitStore.entries()) {
+    const valid = timestamps.filter((ts) => now - ts < RATE_LIMIT_WINDOW_MS);
+    if (valid.length === 0) {
+      rateLimitStore.delete(ip);
+    } else {
+      rateLimitStore.set(ip, valid);
+    }
+  }
+};
+
+// Run cleanup every 10 minutes
+setInterval(cleanupRateLimitStore, 10 * 60 * 1000);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,6 +70,111 @@ export type ContactResult = {
   readonly error?: string;
 };
 
+type SpamCheckResult = {
+  readonly isSpam: boolean;
+  readonly reason?: string;
+};
+
+// ---------------------------------------------------------------------------
+// Spam Prevention
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if honeypot field was filled (indicates bot).
+ * The honeypot field should be hidden via CSS and left empty by humans.
+ */
+const checkHoneypot = (data: Record<string, unknown>): SpamCheckResult => {
+  const honeypot = data._gotcha ?? data.website ?? data.url_field;
+  if (honeypot && String(honeypot).trim().length > 0) {
+    return { isSpam: true, reason: 'honeypot' };
+  }
+  return { isSpam: false };
+};
+
+/**
+ * Check if form was submitted too quickly (indicates bot).
+ * The form includes a hidden timestamp field set on page load.
+ */
+const checkSubmissionTime = (data: Record<string, unknown>): SpamCheckResult => {
+  const loadedAt = data._loaded_at;
+  if (!loadedAt) {
+    // No timestamp - could be non-JS submission, allow but log
+    return { isSpam: false };
+  }
+
+  const loadTime = parseInt(String(loadedAt), 10);
+  if (isNaN(loadTime)) {
+    return { isSpam: true, reason: 'invalid_timestamp' };
+  }
+
+  const elapsed = Date.now() - loadTime;
+  if (elapsed < MIN_SUBMISSION_TIME_MS) {
+    return { isSpam: true, reason: 'too_fast' };
+  }
+
+  return { isSpam: false };
+};
+
+/**
+ * Check IP-based rate limiting.
+ * Returns spam if IP has exceeded max submissions in the window.
+ */
+const checkRateLimit = (clientIp: string): SpamCheckResult => {
+  const now = Date.now();
+  const timestamps = rateLimitStore.get(clientIp) ?? [];
+
+  // Filter to only recent submissions within the window
+  const recent = timestamps.filter((ts) => now - ts < RATE_LIMIT_WINDOW_MS);
+
+  if (recent.length >= RATE_LIMIT_MAX) {
+    return { isSpam: true, reason: 'rate_limited' };
+  }
+
+  return { isSpam: false };
+};
+
+/**
+ * Record a submission for rate limiting.
+ */
+const recordSubmission = (clientIp: string): void => {
+  const now = Date.now();
+  const timestamps = rateLimitStore.get(clientIp) ?? [];
+  timestamps.push(now);
+  rateLimitStore.set(clientIp, timestamps);
+};
+
+/**
+ * Run all spam checks.
+ */
+const runSpamChecks = (
+  data: Record<string, unknown>,
+  clientIp: string,
+  logger: Logger,
+): SpamCheckResult => {
+  // Check honeypot first (most definitive)
+  const honeypotResult = checkHoneypot(data);
+  if (honeypotResult.isSpam) {
+    logger.warn(`[contact] Spam blocked: honeypot triggered from ${clientIp}`);
+    return honeypotResult;
+  }
+
+  // Check submission timing
+  const timingResult = checkSubmissionTime(data);
+  if (timingResult.isSpam) {
+    logger.warn(`[contact] Spam blocked: ${timingResult.reason} from ${clientIp}`);
+    return timingResult;
+  }
+
+  // Check rate limit
+  const rateLimitResult = checkRateLimit(clientIp);
+  if (rateLimitResult.isSpam) {
+    logger.warn(`[contact] Spam blocked: rate limited ${clientIp}`);
+    return rateLimitResult;
+  }
+
+  return { isSpam: false };
+};
+
 // ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------
@@ -43,6 +185,9 @@ const ContactFormSchema = z.object({
   message: z.string().min(1, 'Message is required').max(10000),
   pageUrl: z.string().max(2000).optional(),
   pageTitle: z.string().max(500).optional(),
+  // Spam prevention fields (not validated, just passed through)
+  _gotcha: z.string().optional(),
+  _loaded_at: z.string().optional(),
 });
 
 type ContactFormInput = z.infer<typeof ContactFormSchema>;
@@ -327,6 +472,25 @@ export const handleContactApi = async (
     return true;
   }
 
+  // Get client IP early for spam checks
+  const clientIp = getClientIp(
+    req.headers as Record<string, string | string[] | undefined>,
+    req.socket.remoteAddress,
+  );
+
+  // Run spam prevention checks BEFORE validation
+  const spamResult = runSpamChecks(rawData, clientIp, logger);
+  if (spamResult.isSpam) {
+    // Return success to not reveal spam detection to bots
+    // but don't actually send the email
+    if (acceptsJson || isJson) {
+      respondJson(res, 200, { success: true });
+    } else {
+      respondRedirect(res, req.headers.referer ?? '/', 'success');
+    }
+    return true;
+  }
+
   // Validate input
   const parsed = ContactFormSchema.safeParse(rawData);
   if (!parsed.success) {
@@ -356,12 +520,10 @@ export const handleContactApi = async (
     return true;
   }
 
-  // Build submission object
-  const clientIp = getClientIp(
-    req.headers as Record<string, string | string[] | undefined>,
-    req.socket.remoteAddress,
-  );
+  // Record this submission for rate limiting
+  recordSubmission(clientIp);
 
+  // Build submission object
   const submission: ContactSubmission = {
     name: input.name,
     email: input.email,

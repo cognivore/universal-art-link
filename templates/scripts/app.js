@@ -556,12 +556,17 @@ const initContactForms = () => {
   const forms = document.querySelectorAll('[data-contact-form]');
   if (!forms.length) return;
 
+  // Record page load time for spam prevention timing check
+  const pageLoadTime = Date.now();
+
   forms.forEach((form) => {
     // Populate hidden page context fields
     const pageUrlInput = form.querySelector('[data-contact-page-url]');
     const pageTitleInput = form.querySelector('[data-contact-page-title]');
+    const loadedAtInput = form.querySelector('[data-contact-loaded-at]');
     if (pageUrlInput) pageUrlInput.value = window.location.href;
     if (pageTitleInput) pageTitleInput.value = document.title;
+    if (loadedAtInput) loadedAtInput.value = String(pageLoadTime);
 
     // Check for URL params indicating a redirect result
     const params = new URLSearchParams(window.location.search);
@@ -620,6 +625,8 @@ const initContactForms = () => {
           // Re-populate hidden fields after reset
           if (pageUrlInput) pageUrlInput.value = window.location.href;
           if (pageTitleInput) pageTitleInput.value = document.title;
+          // Update timestamp for next submission
+          if (loadedAtInput) loadedAtInput.value = String(Date.now());
         } else {
           const errorMsg = result.error || 'Something went wrong. Please try again.';
           showContactStatus(statusEl, 'error', errorMsg);
