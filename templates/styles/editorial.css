@@ -829,22 +829,29 @@ a {
 
 .commerce-item-grid__items {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--space-md);
+}
+
+@media (max-width: 640px) {
+  .commerce-item-grid__items {
+    grid-template-columns: 1fr;
+  }
 }
 
 .commerce-item-card {
   border: 1px solid var(--border-subtle);
   border-radius: 1.75rem;
   display: flex;
-  gap: 1.5rem;
+  flex-direction: column;
+  gap: 1rem;
   padding: var(--space-md);
   background: #fff;
   box-shadow: 0 16px 40px rgba(15, 15, 15, 0.08);
 }
 
 .commerce-item-card__media {
-  flex: 0 0 180px;
+  aspect-ratio: 1;
   border-radius: 1.25rem;
   overflow: hidden;
 }

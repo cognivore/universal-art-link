@@ -33,16 +33,20 @@ const StripeCheckout = (() => {
   // Create checkout session and redirect
   const checkout = async (productId, quantity = 1, customerEmail = null) => {
     try {
+      const payload = {
+        productId,
+        quantity,
+        successUrl: `${window.location.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: window.location.href,
+      };
+      if (customerEmail) {
+        payload.customerEmail = customerEmail;
+      }
+
       const response = await fetch('/__ual/api/stripe/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productId,
-          quantity,
-          customerEmail,
-          successUrl: `${window.location.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-          cancelUrl: window.location.href,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
