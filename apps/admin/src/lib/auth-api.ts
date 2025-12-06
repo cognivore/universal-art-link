@@ -94,3 +94,42 @@ export const setStagingBypass = async (enabled: boolean | null): Promise<Staging
   return response.json();
 };
 
+// =============================================================================
+// Crawling Settings API (Search Engine Indexing)
+// =============================================================================
+
+export type CrawlingState = {
+  allowed: boolean;
+  source: 'runtime' | 'env' | 'default';
+};
+
+export const getCrawlingState = async (): Promise<CrawlingState> => {
+  const response = await fetch(`${getApiBase()}/__ual/api/admin/settings/crawling`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Failed to get crawling state');
+  }
+
+  return response.json();
+};
+
+export const setCrawling = async (allowed: boolean | null): Promise<CrawlingState> => {
+  const response = await fetch(`${getApiBase()}/__ual/api/admin/settings/crawling`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ allowed }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Failed to set crawling');
+  }
+
+  return response.json();
+};
+

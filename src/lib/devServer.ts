@@ -71,6 +71,12 @@ import {
   type StripeProduct,
 } from '../types/stripe-commerce.js';
 import { handleContactApi } from './contactApi.js';
+import {
+  isCrawlingAllowed,
+  setCrawlingAllowed,
+  getCrawlingState,
+  generateRobotsTxt,
+} from './crawling.js';
 
 const mimeMap: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -912,6 +918,40 @@ const handleAdminSettingsApi = async (
       return true;
     }
 
+    // Crawling settings - only available on production
+    const isCrawlingEndpoint = requestUrl.pathname === '/__ual/api/admin/settings/crawling';
+
+    if (isCrawlingEndpoint && method === 'GET') {
+      const state = getCrawlingState();
+      respondJson(res, 200, state);
+      return true;
+    }
+
+    if (isCrawlingEndpoint && method === 'POST') {
+      // On staging, crawling is always blocked - can't change it
+      if (isStaging) {
+        respondJson(res, 400, { error: 'Crawling is always blocked on staging' });
+        return true;
+      }
+
+      const body = await readJsonBody(req);
+
+      if (typeof body.allowed === 'boolean') {
+        setCrawlingAllowed(body.allowed);
+        logger.info(`[settings] Crawling ${body.allowed ? 'enabled' : 'disabled'} by ${req.user.sub}`);
+      } else if (body.allowed === null) {
+        setCrawlingAllowed(null);
+        logger.info(`[settings] Crawling reset to env default by ${req.user.sub}`);
+      } else {
+        respondJson(res, 400, { error: 'allowed must be boolean or null' });
+        return true;
+      }
+
+      const state = getCrawlingState();
+      respondJson(res, 200, state);
+      return true;
+    }
+
     // Other settings endpoints require Santa auth
     if (!req.user.is_santa) {
       respondJson(res, 403, { error: 'Santa authentication required for settings' });
@@ -1707,6 +1747,19 @@ export const startDevServer = ({
     if (requestUrl.pathname === '/__ual/healthz') {
       logger.info('[devserver] Health check');
       respondJson(res, 200, { ok: true, ts: Date.now(), stripeMode: isStripeMode });
+      return;
+    }
+
+    // robots.txt - controls search engine crawling
+    // Staging: always block all crawlers (protect placeholder content)
+    // Production: configurable via admin settings
+    if (requestUrl.pathname === '/robots.txt') {
+      const isStaging = stripeConfig?.mode === 'staging';
+      const content = generateRobotsTxt(isStaging);
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+      res.end(content);
       return;
     }
 

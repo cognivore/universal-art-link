@@ -5,6 +5,7 @@ import { ContentStudio } from './features/cms/ContentStudio';
 import { CommerceSuite } from './features/commerce/CommerceSuite';
 import { StripeCommerce } from './features/stripe/StripeCommerce';
 import { StagingSettings } from './features/settings/StagingSettings';
+import { CrawlingSettings } from './features/settings/CrawlingSettings';
 import { PromotionPanel } from './features/settings/PromotionPanel';
 import { SnapshotsPanel } from './features/settings/SnapshotsPanel';
 import { LoginPage } from './features/auth/LoginPage';
@@ -91,6 +92,8 @@ export const App = () => {
             <div className="space-y-6">
               {/* Santa settings - always visible so any admin can disable bypass */}
               <StagingSettings />
+              {/* Crawling settings - control search engine indexing */}
+              <CrawlingSettings />
               {/* On staging: show promotion panel to push to production */}
               {isStaging && <PromotionPanel />}
               {/* On both staging and production: show snapshots panel */}
