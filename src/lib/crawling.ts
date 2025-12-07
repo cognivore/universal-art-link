@@ -4,10 +4,56 @@
  * Controls whether search engines can crawl the site via robots.txt.
  * - Staging: Always blocked (protects placeholder content from indexing)
  * - Production: Configurable via admin settings (default: blocked)
+ *
+ * State is persisted to .ual/crawling.json to survive server restarts.
  */
+
+import fs from 'fs-extra';
+import path from 'node:path';
+
+// Persistent state file location
+let stateFilePath: string | null = null;
 
 // Runtime state for crawling permission (can be toggled without restart)
 let runtimeCrawlingAllowed: boolean | null = null;
+
+/**
+ * Initialize the crawling module with a root directory.
+ * This loads any persisted state from disk.
+ */
+export const initCrawling = async (rootDir: string): Promise<void> => {
+  stateFilePath = path.join(rootDir, '.ual', 'crawling.json');
+
+  try {
+    if (await fs.pathExists(stateFilePath)) {
+      const data = await fs.readJson(stateFilePath);
+      if (typeof data.allowed === 'boolean') {
+        runtimeCrawlingAllowed = data.allowed;
+      }
+    }
+  } catch {
+    // Ignore errors - will use default state
+  }
+};
+
+/**
+ * Persist crawling state to disk.
+ */
+const persistState = async (): Promise<void> => {
+  if (!stateFilePath) return;
+
+  try {
+    await fs.ensureDir(path.dirname(stateFilePath));
+    if (runtimeCrawlingAllowed === null) {
+      // Remove file when reset to default
+      await fs.remove(stateFilePath);
+    } else {
+      await fs.writeJson(stateFilePath, { allowed: runtimeCrawlingAllowed });
+    }
+  } catch (error) {
+    console.error('[crawling] Failed to persist state:', error);
+  }
+};
 
 /**
  * Check if crawling is allowed.
@@ -25,9 +71,11 @@ export const isCrawlingAllowed = (): boolean => {
 /**
  * Toggle crawling permission at runtime.
  * Pass null to reset to environment variable behavior.
+ * Changes are persisted to disk.
  */
 export const setCrawlingAllowed = (allowed: boolean | null): void => {
   runtimeCrawlingAllowed = allowed;
+  void persistState();
 };
 
 /**
@@ -81,4 +129,3 @@ User-agent: *
 Disallow: /
 `;
 };
-

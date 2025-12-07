@@ -72,6 +72,7 @@ import {
 } from '../types/stripe-commerce.js';
 import { handleContactApi } from './contactApi.js';
 import {
+  initCrawling,
   isCrawlingAllowed,
   setCrawlingAllowed,
   getCrawlingState,
@@ -1644,6 +1645,9 @@ export const startDevServer = ({
   const clients = new Set<LiveReloadClient>();
   const runtimeState: AdminRuntimeConfig = { ...runtimeConfig };
 
+  // Initialize crawling module (loads persisted state)
+  void initCrawling(paths.rootDir);
+
   // Initialize auth and stripe services if single-tenant-stripe mode is enabled
   const isStripeMode = stripeConfig?.enabled ?? false;
   const baseUrl = runtimeConfig.previewBaseUrl;
@@ -1758,7 +1762,8 @@ export const startDevServer = ({
       const content = generateRobotsTxt(isStaging);
       res.statusCode = 200;
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+      // Short cache to allow quick updates when toggling in admin panel
+      res.setHeader('Cache-Control', 'public, max-age=60');
       res.end(content);
       return;
     }
