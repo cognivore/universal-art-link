@@ -44,3 +44,5 @@ db/*
 
 # Infra (legacy)
 infra/hostinger/priv/system-manager/result
+
+*backup/
