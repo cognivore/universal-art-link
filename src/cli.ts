@@ -7,6 +7,8 @@ import { runBuildCommand } from './commands/build.js';
 import { runPackageCommand } from './commands/package.js';
 import { runDeployCommand } from './commands/deploy.js';
 import { runEndpointCommand } from './commands/endpoint.js';
+import { runSeedCommand } from './commands/seed.js';
+import { runMigrateCommand } from './commands/migrate.js';
 
 const require = createRequire(import.meta.url);
 const { version, description } = require('../package.json') as { version: string; description: string };
@@ -46,9 +48,47 @@ program.command('package').description('Zip the built site into dist/site-*.zip'
   await runPackageCommand();
 });
 
-program.command('deploy').description('POST the packaged site to configured endpoint').action(async () => {
-  await runDeployCommand();
-});
+program
+  .command('deploy')
+  .description('Deploy code changes to the remote server (content-preserving)')
+  .option('--skip-schema-check', 'Skip schema compatibility check (dangerous)')
+  .option('--force', 'Deploy even with uncommitted changes')
+  .action(async (opts) => {
+    await runDeployCommand({
+      skipSchemaCheck: Boolean(opts.skipSchemaCheck),
+      force: Boolean(opts.force),
+    });
+  });
+
+program
+  .command('seed')
+  .description('Initialize remote server with content (one-time setup)')
+  .option('--force', 'Overwrite existing content (dangerous)')
+  .action(async (opts) => {
+    await runSeedCommand({
+      force: Boolean(opts.force),
+    });
+  });
+
+program
+  .command('migrate')
+  .description('Manage content migrations for schema changes')
+  .option('--list', 'List available migrations')
+  .option('--create', 'Create a new migration scaffold')
+  .option('--apply <path>', 'Apply a migration to remote content')
+  .option('--name <name>', 'Migration name (for --create)')
+  .option('--description <desc>', 'Migration description (for --create)')
+  .option('--dry-run', 'Validate without applying (for --apply)')
+  .action(async (opts) => {
+    await runMigrateCommand({
+      list: Boolean(opts.list),
+      create: Boolean(opts.create),
+      apply: opts.apply,
+      name: opts.name,
+      description: opts.description,
+      dryRun: Boolean(opts.dryRun),
+    });
+  });
 
 program
   .command('endpoint')

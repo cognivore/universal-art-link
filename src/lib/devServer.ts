@@ -43,13 +43,7 @@ import { createAuthGuard, type AuthenticatedRequest } from './authMiddleware.js'
 import { createEmailService, createEmailConfig, type EmailService } from './emailService.js';
 import { createStripeSyncService, type StripeSyncService } from './stripeSyncService.js';
 import { createSyncCron, type SyncCron } from './syncCron.js';
-import {
-  createPromotionService,
-  createProductionPathConfig,
-  verifyWebhookSignature,
-  type PromotionService,
-  type PromotionWebhookConfig,
-} from './promotionService.js';
+import { createPromotionService, createProductionPathConfig, type PromotionService } from './promotionService.js';
 import { createStripeConfig, getStripePublicConfig, validateStripeConfig } from './stripeConfig.js';
 import { createStripeService, type StripeService } from './stripeService.js';
 import {
@@ -68,16 +62,7 @@ import {
   type StripeMode,
   type StripeProductInput,
   type StripeProductPatch,
-  type StripeProduct,
 } from '../types/stripe-commerce.js';
-import { handleContactApi } from './contactApi.js';
-import {
-  initCrawling,
-  isCrawlingAllowed,
-  setCrawlingAllowed,
-  getCrawlingState,
-  generateRobotsTxt,
-} from './crawling.js';
 
 const mimeMap: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -210,46 +195,6 @@ const injectRuntimeConfig = (html: string, runtime: AdminRuntimeConfig): string 
     return html.replace('</head>', `${script}</head>`);
   }
   return `${script}${html}`;
-};
-
-/**
- * Inject Santa override banner script into all pages.
- * Shows a prominent warning when Santa bypass is enabled.
- */
-const injectSantaBanner = (html: string, isAdminPage: boolean): string => {
-  const adminLink = isAdminPage
-    ? `<button onclick="window.location.hash='';setTimeout(()=>document.querySelector('[value=settings]')?.click(),100)" style="margin-left:auto;padding:8px 16px;background:#fff;color:#b91c1c;border:none;border-radius:6px;font-weight:600;cursor:pointer">Go to Settings</button>`
-    : `<a href="/admin" style="margin-left:auto;padding:8px 16px;background:#fff;color:#b91c1c;border-radius:6px;font-weight:600;text-decoration:none">Admin Panel</a>`;
-
-  const snippet = `
-    <script>
-      (function() {
-        fetch('/__ual/santa-status')
-          .then(r => r.json())
-          .then(data => {
-            if (!data.enabled) return;
-            const banner = document.createElement('div');
-            banner.id = 'ual-santa-banner';
-            banner.innerHTML = \`
-              <div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(90deg,#b91c1c,#dc2626);color:#fff;padding:12px 20px;display:flex;align-items:center;gap:12px;font-family:system-ui,-apple-system,sans-serif;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.2)">
-                <span style="font-size:20px">🎅</span>
-                <strong>SANTA OVERRIDE ACTIVE</strong>
-                <span style="opacity:0.9">Disable Santa bypass in Settings before going live. This banner appears on all pages while the override is enabled.</span>
-                ${adminLink}
-              </div>
-            \`;
-            document.body.prepend(banner);
-            document.body.style.paddingTop = '52px';
-          })
-          .catch(() => {});
-      })();
-    </script>
-  `;
-
-  if (html.includes('</body>')) {
-    return html.replace('</body>', `${snippet}</body>`);
-  }
-  return `${html}${snippet}`;
 };
 
 const respondJson = (res: http.ServerResponse<http.IncomingMessage>, status: number, payload: unknown): void => {
@@ -466,7 +411,6 @@ const handleStripeApi = async (
   res: http.ServerResponse<http.IncomingMessage>,
   paths: PathConfig,
   stripeService: StripeService,
-  stripeSyncService: StripeSyncService | null,
   requestUrl: URL,
   baseUrl: string,
   logger: Logger,
@@ -478,22 +422,6 @@ const handleStripeApi = async (
   const subPath = requestUrl.pathname.replace('/__ual/api/stripe', '').replace(/^\/+/, '');
   const segments = subPath ? subPath.split('/').filter(Boolean) : [];
   const method = req.method ?? 'GET';
-
-  const respondWithProduct = async (status: number, product: StripeProduct): Promise<boolean> => {
-    if (!stripeSyncService) {
-      respondJson(res, status, product);
-      return true;
-    }
-    try {
-      const synced = await stripeSyncService.syncProductDetails(product.id);
-      respondJson(res, status, synced);
-      return true;
-    } catch (error) {
-      logger.error('[stripe] Failed to sync product with Stripe', error);
-      respondJson(res, 500, { error: 'Failed to sync product with Stripe' });
-      return true;
-    }
-  };
 
   try {
     // GET /__ual/api/stripe/products - List all products
@@ -528,7 +456,8 @@ const handleStripeApi = async (
         metadata: body.metadata as Record<string, string> | undefined,
       };
       const product = await createStripeProduct(paths, input);
-      return respondWithProduct(201, product);
+      respondJson(res, 201, product);
+      return true;
     }
 
     // PATCH/DELETE /__ual/api/stripe/products/:id - Update/delete product (requires auth)
@@ -565,20 +494,9 @@ const handleStripeApi = async (
           sortOrder: body.sortOrder !== undefined ? Number(body.sortOrder) : undefined,
           metadata: body.metadata as Record<string, string> | undefined,
         };
-        let product = await updateStripeProduct(paths, productId, patch);
-
-        // If product has Stripe IDs and sync service is available, sync changes to Stripe
-        if (stripeSyncService && product.stripeProductId) {
-          try {
-            product = await stripeSyncService.syncProductDetails(productId);
-            logger.info(`[stripe] Product ${productId} synced to Stripe`);
-          } catch (syncError) {
-            // Log but don't fail - local update succeeded
-            logger.error('[stripe] Failed to sync product to Stripe:', syncError);
-          }
-        }
-
-        return respondWithProduct(200, product);
+        const product = await updateStripeProduct(paths, productId, patch);
+        respondJson(res, 200, product);
+        return true;
       }
 
       if (method === 'DELETE') {
@@ -680,59 +598,6 @@ const handleStripeApi = async (
         respondJson(res, 400, { error: message });
         return true;
       }
-    }
-
-    // GET /__ual/api/stripe/verify-product/:stripeProductId - Verify product exists in Stripe
-    if (segments[0] === 'verify-product' && segments.length === 2 && method === 'GET') {
-      if (!req.user) {
-        respondJson(res, 401, { error: 'Authentication required' });
-        return true;
-      }
-      const stripeProductId = segments[1]!;
-      try {
-        const product = await stripeService.retrieveProduct(stripeProductId);
-        respondJson(res, 200, {
-          id: product.id,
-          name: product.name,
-          active: product.active,
-          images: product.images,
-          metadata: product.metadata,
-        });
-      } catch (error) {
-        logger.error('[stripe] verify-product failed', error);
-        respondJson(res, 404, { error: 'Stripe product not found' });
-      }
-      return true;
-    }
-
-    // GET /__ual/api/stripe/verify-session/:sessionId - Verify checkout session exists in Stripe
-    if (segments[0] === 'verify-session' && segments.length === 2 && method === 'GET') {
-      if (!req.user) {
-        respondJson(res, 401, { error: 'Authentication required' });
-        return true;
-      }
-      const sessionId = segments[1]!;
-      try {
-        const session = await stripeService.retrieveSession(sessionId);
-        respondJson(res, 200, {
-          id: session.id,
-          url: session.url,
-          status: session.status,
-          paymentStatus: session.payment_status,
-          metadata: session.metadata,
-          amountTotal: session.amount_total,
-          currency: session.currency,
-          lineItems: session.line_items?.data.map((item) => ({
-            description: item.description,
-            price: item.price?.id,
-            product: typeof item.price?.product === 'string' ? item.price?.product : item.price?.product?.id,
-          })),
-        });
-      } catch (error) {
-        logger.error('[stripe] verify-session failed', error);
-        respondJson(res, 404, { error: 'Stripe session not found' });
-      }
-      return true;
     }
 
     // GET /__ual/api/stripe/orders - List checkout sessions from Stripe (requires auth)
@@ -863,50 +728,35 @@ const handleAdminSettingsApi = async (
   res: http.ServerResponse<http.IncomingMessage>,
   requestUrl: URL,
   logger: Logger,
-  stripeMode: StripeMode | undefined,
 ): Promise<boolean> => {
-  const isStaging = stripeMode === 'staging';
   if (!requestUrl.pathname.startsWith('/__ual/api/admin/settings')) {
     return false;
   }
 
   const method = req.method ?? 'GET';
-  const isStagingBypassStateEndpoint = requestUrl.pathname === '/__ual/api/admin/settings/staging-bypass';
 
-  if (!req.user) {
-    respondJson(res, 401, { error: 'Authentication required' });
+  // All settings endpoints require is_santa authentication
+  if (!req.user?.is_santa) {
+    respondJson(res, 403, { error: 'Santa authentication required for settings' });
     return true;
   }
 
   try {
     // GET /__ual/api/admin/settings/staging-bypass - Get staging bypass state
-    if (isStagingBypassStateEndpoint && method === 'GET') {
+    if (requestUrl.pathname === '/__ual/api/admin/settings/staging-bypass' && method === 'GET') {
       const state = getStagingBypassState();
       respondJson(res, 200, state);
       return true;
     }
 
     // POST /__ual/api/admin/settings/staging-bypass - Toggle staging bypass
-    // On staging: any admin can enable/disable
-    // On production: any admin can disable, only Santa can enable
-    if (isStagingBypassStateEndpoint && method === 'POST') {
+    if (requestUrl.pathname === '/__ual/api/admin/settings/staging-bypass' && method === 'POST') {
       const body = await readJsonBody(req);
 
       if (typeof body.enabled === 'boolean') {
-        // Disabling bypass: any admin can do this anywhere (security-safe)
-        // Enabling bypass: any admin on staging, only Santa on production
-        if (body.enabled === true && !isStaging && !req.user.is_santa) {
-          respondJson(res, 403, { error: 'Santa authentication required to enable bypass on production' });
-          return true;
-        }
         setStagingBypassEnabled(body.enabled);
         logger.info(`[settings] Staging bypass ${body.enabled ? 'enabled' : 'disabled'} by ${req.user.sub}`);
       } else if (body.enabled === null) {
-        // Resetting to env default: any admin on staging, only Santa on production
-        if (!isStaging && !req.user.is_santa) {
-          respondJson(res, 403, { error: 'Santa authentication required to reset bypass on production' });
-          return true;
-        }
         setStagingBypassEnabled(null);
         logger.info(`[settings] Staging bypass reset to env default by ${req.user.sub}`);
       } else {
@@ -916,46 +766,6 @@ const handleAdminSettingsApi = async (
 
       const state = getStagingBypassState();
       respondJson(res, 200, state);
-      return true;
-    }
-
-    // Crawling settings - only available on production
-    const isCrawlingEndpoint = requestUrl.pathname === '/__ual/api/admin/settings/crawling';
-
-    if (isCrawlingEndpoint && method === 'GET') {
-      const state = getCrawlingState();
-      respondJson(res, 200, state);
-      return true;
-    }
-
-    if (isCrawlingEndpoint && method === 'POST') {
-      // On staging, crawling is always blocked - can't change it
-      if (isStaging) {
-        respondJson(res, 400, { error: 'Crawling is always blocked on staging' });
-        return true;
-      }
-
-      const body = await readJsonBody(req);
-
-      if (typeof body.allowed === 'boolean') {
-        setCrawlingAllowed(body.allowed);
-        logger.info(`[settings] Crawling ${body.allowed ? 'enabled' : 'disabled'} by ${req.user.sub}`);
-      } else if (body.allowed === null) {
-        setCrawlingAllowed(null);
-        logger.info(`[settings] Crawling reset to env default by ${req.user.sub}`);
-      } else {
-        respondJson(res, 400, { error: 'allowed must be boolean or null' });
-        return true;
-      }
-
-      const state = getCrawlingState();
-      respondJson(res, 200, state);
-      return true;
-    }
-
-    // Other settings endpoints require Santa auth
-    if (!req.user.is_santa) {
-      respondJson(res, 403, { error: 'Santa authentication required for settings' });
       return true;
     }
 
@@ -1055,9 +865,9 @@ const handlePromotionApi = async (
 
   const method = req.method ?? 'GET';
 
-  // Promotion requires authentication (any admin can promote)
-  if (!req.user) {
-    respondJson(res, 401, { error: 'Authentication required for promotion' });
+  // Promotion requires is_santa authentication
+  if (!req.user?.is_santa) {
+    respondJson(res, 403, { error: 'Santa authentication required for promotion' });
     return true;
   }
 
@@ -1111,238 +921,6 @@ const handlePromotionApi = async (
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Promotion request failed';
     logger.error('[promotion] Error:', error);
-    respondJson(res, 500, { error: message });
-    return true;
-  }
-};
-
-// =============================================================================
-// Snapshots API - Save states for content and assets
-// =============================================================================
-
-type Snapshot = {
-  id: string;
-  name: string;
-  createdAt: string;
-  createdBy: string;
-  size: number;
-};
-
-type SnapshotsIndex = {
-  snapshots: Snapshot[];
-};
-
-const SNAPSHOTS_DIR = '.ual/snapshots';
-const SNAPSHOTS_INDEX = '.ual/snapshots/index.json';
-
-const ensureSnapshotsDir = async (paths: PathConfig): Promise<string> => {
-  const snapshotsDir = path.join(paths.rootDir, SNAPSHOTS_DIR);
-  await fs.ensureDir(snapshotsDir);
-  return snapshotsDir;
-};
-
-const loadSnapshotsIndex = async (paths: PathConfig): Promise<SnapshotsIndex> => {
-  const indexPath = path.join(paths.rootDir, SNAPSHOTS_INDEX);
-  try {
-    const content = await fs.readFile(indexPath, 'utf8');
-    return JSON.parse(content) as SnapshotsIndex;
-  } catch {
-    return { snapshots: [] };
-  }
-};
-
-const saveSnapshotsIndex = async (paths: PathConfig, index: SnapshotsIndex): Promise<void> => {
-  await ensureSnapshotsDir(paths);
-  const indexPath = path.join(paths.rootDir, SNAPSHOTS_INDEX);
-  await fs.writeFile(indexPath, JSON.stringify(index, null, 2));
-};
-
-const calculateDirSize = async (dirPath: string): Promise<number> => {
-  let total = 0;
-  try {
-    const entries = await fs.readdir(dirPath, { withFileTypes: true });
-    for (const entry of entries) {
-      const entryPath = path.join(dirPath, entry.name);
-      if (entry.isDirectory()) {
-        total += await calculateDirSize(entryPath);
-      } else {
-        const stat = await fs.stat(entryPath);
-        total += stat.size;
-      }
-    }
-  } catch {
-    // Directory doesn't exist or can't be read
-  }
-  return total;
-};
-
-const handleSnapshotsApi = async (
-  req: AuthenticatedRequest,
-  res: http.ServerResponse<http.IncomingMessage>,
-  paths: PathConfig,
-  requestUrl: URL,
-  logger: Logger,
-): Promise<boolean> => {
-  if (!requestUrl.pathname.startsWith('/__ual/api/admin/snapshots')) {
-    return false;
-  }
-
-  const method = req.method ?? 'GET';
-
-  // Snapshots require authentication
-  if (!req.user) {
-    respondJson(res, 401, { error: 'Authentication required' });
-    return true;
-  }
-
-  const subPath = requestUrl.pathname.replace('/__ual/api/admin/snapshots', '').replace(/^\/+/, '');
-  const segments = subPath ? subPath.split('/').filter(Boolean) : [];
-
-  try {
-    // GET /__ual/api/admin/snapshots - List all snapshots
-    if (segments.length === 0 && method === 'GET') {
-      const index = await loadSnapshotsIndex(paths);
-      respondJson(res, 200, index);
-      return true;
-    }
-
-    // POST /__ual/api/admin/snapshots - Create a new snapshot
-    if (segments.length === 0 && method === 'POST') {
-      const body = await readJsonBody(req);
-      const name = String(body.name ?? `Snapshot ${new Date().toISOString()}`);
-      const id = `snap_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
-      const snapshotsDir = await ensureSnapshotsDir(paths);
-      const snapshotDir = path.join(snapshotsDir, id);
-      await fs.ensureDir(snapshotDir);
-
-      // Copy content directory
-      const contentDest = path.join(snapshotDir, 'content');
-      await fs.copy(paths.contentDir, contentDest);
-      logger.info(`[snapshots] Copied content to ${contentDest}`);
-
-      // Copy assets directory
-      const assetsDest = path.join(snapshotDir, 'assets');
-      await fs.copy(paths.assetsDir, assetsDest);
-      logger.info(`[snapshots] Copied assets to ${assetsDest}`);
-
-      // Calculate size
-      const size = await calculateDirSize(snapshotDir);
-
-      // Update index
-      const index = await loadSnapshotsIndex(paths);
-      const snapshot: Snapshot = {
-        id,
-        name,
-        createdAt: new Date().toISOString(),
-        createdBy: req.user.sub,
-        size,
-      };
-      index.snapshots.unshift(snapshot); // Add to beginning
-      await saveSnapshotsIndex(paths, index);
-
-      logger.info(`[snapshots] Created snapshot ${id} by ${req.user.sub}`);
-      respondJson(res, 201, { snapshot });
-      return true;
-    }
-
-    // POST /__ual/api/admin/snapshots/:id/restore - Restore a snapshot
-    if (segments.length === 2 && segments[1] === 'restore' && method === 'POST') {
-      const snapshotId = segments[0] ?? '';
-      const index = await loadSnapshotsIndex(paths);
-      const snapshot = index.snapshots.find(s => s.id === snapshotId);
-
-      if (!snapshot) {
-        respondJson(res, 404, { error: 'Snapshot not found' });
-        return true;
-      }
-
-      const snapshotsDir = await ensureSnapshotsDir(paths);
-      const snapshotDir = path.join(snapshotsDir, snapshotId);
-
-      if (!await fs.pathExists(snapshotDir)) {
-        respondJson(res, 404, { error: 'Snapshot data not found' });
-        return true;
-      }
-
-      // Restore content
-      const contentSrc = path.join(snapshotDir, 'content');
-      if (await fs.pathExists(contentSrc)) {
-        await fs.emptyDir(paths.contentDir);
-        await fs.copy(contentSrc, paths.contentDir);
-        logger.info(`[snapshots] Restored content from ${contentSrc}`);
-      }
-
-      // Restore assets
-      const assetsSrc = path.join(snapshotDir, 'assets');
-      if (await fs.pathExists(assetsSrc)) {
-        await fs.emptyDir(paths.assetsDir);
-        await fs.copy(assetsSrc, paths.assetsDir);
-        logger.info(`[snapshots] Restored assets from ${assetsSrc}`);
-      }
-
-      logger.info(`[snapshots] Restored snapshot ${snapshotId} by ${req.user.sub}`);
-      respondJson(res, 200, { success: true, message: 'Snapshot restored' });
-      return true;
-    }
-
-    // PATCH /__ual/api/admin/snapshots/:id - Rename a snapshot
-    if (segments.length === 1 && method === 'PATCH') {
-      const snapshotId = segments[0] ?? '';
-      const body = await readJsonBody(req);
-      const newName = String(body.name ?? '').trim();
-
-      if (!newName) {
-        respondJson(res, 400, { error: 'Name is required' });
-        return true;
-      }
-
-      const index = await loadSnapshotsIndex(paths);
-      const snapshot = index.snapshots.find(s => s.id === snapshotId);
-
-      if (!snapshot) {
-        respondJson(res, 404, { error: 'Snapshot not found' });
-        return true;
-      }
-
-      snapshot.name = newName;
-      await saveSnapshotsIndex(paths, index);
-
-      logger.info(`[snapshots] Renamed snapshot ${snapshotId} to "${newName}" by ${req.user.sub}`);
-      respondJson(res, 200, { snapshot });
-      return true;
-    }
-
-    // DELETE /__ual/api/admin/snapshots/:id - Delete a snapshot
-    if (segments.length === 1 && method === 'DELETE') {
-      const snapshotId = segments[0] ?? '';
-      const index = await loadSnapshotsIndex(paths);
-      const snapshotIdx = index.snapshots.findIndex(s => s.id === snapshotId);
-
-      if (snapshotIdx === -1) {
-        respondJson(res, 404, { error: 'Snapshot not found' });
-        return true;
-      }
-
-      // Remove from index
-      index.snapshots.splice(snapshotIdx, 1);
-      await saveSnapshotsIndex(paths, index);
-
-      // Delete snapshot directory
-      const snapshotsDir = await ensureSnapshotsDir(paths);
-      const snapshotDir = path.join(snapshotsDir, snapshotId);
-      await fs.remove(snapshotDir);
-
-      logger.info(`[snapshots] Deleted snapshot ${snapshotId} by ${req.user.sub}`);
-      respondJson(res, 200, { success: true });
-      return true;
-    }
-
-    respondJson(res, 404, { error: 'Unknown snapshots endpoint' });
-    return true;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Snapshots request failed';
-    logger.error('[snapshots] Error:', error);
     respondJson(res, 500, { error: message });
     return true;
   }
@@ -1558,7 +1136,6 @@ const handleAdminApi = async (
 
 type StaticOptions = {
   readonly adminAssetsDir?: string;
-  readonly sourceAssetsDir?: string; // For fallback to uploaded assets not yet in dist
   readonly runtimeConfig: AdminRuntimeConfig;
 };
 
@@ -1577,18 +1154,7 @@ const serveStatic = async (
   const normalized = relativePath === '/' ? '/index.html' : relativePath;
   let filePath = path.join(assetRoot, normalized);
 
-  let exists = await fs.pathExists(filePath);
-
-  // Fall back to source assets directory for dynamically uploaded files
-  // that haven't been copied to dist yet
-  if (!exists && decoded.startsWith('/assets/') && options.sourceAssetsDir) {
-    const sourceAssetPath = path.join(options.sourceAssetsDir, decoded.replace('/assets/', ''));
-    if (await fs.pathExists(sourceAssetPath)) {
-      filePath = sourceAssetPath;
-      exists = true;
-    }
-  }
-
+  const exists = await fs.pathExists(filePath);
   if (!exists) {
     res.statusCode = 404;
     res.end('Not found');
@@ -1618,8 +1184,6 @@ const serveStatic = async (
     if (isAdminRequest) {
       html = injectRuntimeConfig(html, options.runtimeConfig);
     }
-    // Inject Santa banner on ALL pages (admin and site)
-    html = injectSantaBanner(html, isAdminRequest);
     res.end(html);
     return;
   }
@@ -1644,9 +1208,6 @@ export const startDevServer = ({
 }: DevServerOptions): DevServer => {
   const clients = new Set<LiveReloadClient>();
   const runtimeState: AdminRuntimeConfig = { ...runtimeConfig };
-
-  // Initialize crawling module (loads persisted state)
-  void initCrawling(paths.rootDir);
 
   // Initialize auth and stripe services if single-tenant-stripe mode is enabled
   const isStripeMode = stripeConfig?.enabled ?? false;
@@ -1690,7 +1251,7 @@ export const startDevServer = ({
       logger.info(`[devserver] Stripe service initialized (${stripeConfig!.mode} mode)`);
 
       // Initialize Stripe sync service
-      stripeSyncService = createStripeSyncService(stripeApiConfig, paths, logger, { assetBaseUrl: baseUrl });
+      stripeSyncService = createStripeSyncService(stripeApiConfig, paths, logger);
       logger.info('[devserver] Stripe sync service initialized');
 
       // Initialize and start sync cron (if enabled)
@@ -1712,28 +1273,14 @@ export const startDevServer = ({
             publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
             webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
           };
-          const productionBaseUrl =
-            process.env.UAL_PRODUCTION_BASE_URL ?? process.env.UAL_BASE_URL ?? baseUrl;
-          liveSyncService = createStripeSyncService(liveConfig, productionPaths, logger, {
-            assetBaseUrl: productionBaseUrl,
-          });
+          liveSyncService = createStripeSyncService(liveConfig, productionPaths, logger);
           logger.info('[devserver] Live Stripe sync service initialized for promotion');
         } catch {
           logger.warn('[devserver] Could not initialize live Stripe sync - promotion will skip product export');
         }
       }
 
-      // Create webhook config for staging to call production
-      let webhookConfig: PromotionWebhookConfig | undefined;
-      const productionUrl = process.env.UAL_PRODUCTION_URL;
-      const promotionSecret = process.env.UAL_PROMOTION_SECRET;
-
-      if (productionUrl && promotionSecret && stripeConfig?.mode === 'staging') {
-        webhookConfig = { productionUrl, promotionSecret };
-        logger.info(`[devserver] Promotion webhook configured for ${productionUrl}`);
-      }
-
-      promotionService = createPromotionService(paths, productionPaths, liveSyncService, logger, webhookConfig);
+      promotionService = createPromotionService(paths, productionPaths, liveSyncService, logger);
       logger.info('[devserver] Promotion service initialized');
     } catch (error) {
       logger.error('[devserver] Failed to initialize Stripe:', error);
@@ -1752,156 +1299,6 @@ export const startDevServer = ({
       logger.info('[devserver] Health check');
       respondJson(res, 200, { ok: true, ts: Date.now(), stripeMode: isStripeMode });
       return;
-    }
-
-    // robots.txt - controls search engine crawling
-    // Staging: always block all crawlers (protect placeholder content)
-    // Production: configurable via admin settings
-    if (requestUrl.pathname === '/robots.txt') {
-      const isStaging = stripeConfig?.mode === 'staging';
-      const content = generateRobotsTxt(isStaging);
-      res.statusCode = 200;
-      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      // Short cache to allow quick updates when toggling in admin panel
-      res.setHeader('Cache-Control', 'public, max-age=60');
-      res.end(content);
-      return;
-    }
-
-    // Public endpoint for Santa bypass status (used by injected banner script)
-    if (requestUrl.pathname === '/__ual/santa-status') {
-      respondJson(res, 200, { enabled: isStagingBypassEnabled() });
-      return;
-    }
-
-    // Promotion webhook (called by staging to trigger Stripe export on production)
-    if (requestUrl.pathname === '/__ual/webhook/promotion' && req.method === 'POST') {
-      const promotionSecret = process.env.UAL_PROMOTION_SECRET;
-
-      if (!promotionSecret) {
-        logger.warn('[webhook] Promotion webhook called but UAL_PROMOTION_SECRET not set');
-        respondJson(res, 503, { error: 'Promotion webhook not configured' });
-        return;
-      }
-
-      try {
-        const body = await readJsonBody(req);
-        const bodyStr = JSON.stringify(body);
-        const signature = req.headers['x-ual-signature'] as string;
-        const timestamp = req.headers['x-ual-timestamp'] as string;
-
-        if (!signature || !timestamp) {
-          respondJson(res, 401, { error: 'Missing signature or timestamp' });
-          return;
-        }
-
-        // Verify signature
-        const expectedPayload = JSON.stringify({ timestamp, action: 'promote-products' });
-        if (!verifyWebhookSignature(expectedPayload, signature, promotionSecret)) {
-          logger.warn('[webhook] Invalid promotion webhook signature');
-          respondJson(res, 401, { error: 'Invalid signature' });
-          return;
-        }
-
-        // Check timestamp is recent (within 5 minutes)
-        const ts = parseInt(timestamp, 10);
-        const now = Date.now();
-        if (Math.abs(now - ts) > 5 * 60 * 1000) {
-          respondJson(res, 401, { error: 'Timestamp too old' });
-          return;
-        }
-
-        logger.info('[webhook] Promotion webhook triggered');
-
-        // Step 1: Create a snapshot before importing
-        const snapshotName = `staging-import-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}`;
-        const snapshotId = `snap_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
-        const snapshotsDir = path.join(paths.rootDir, '.ual/snapshots');
-        const snapshotDir = path.join(snapshotsDir, snapshotId);
-        await fs.ensureDir(snapshotDir);
-
-        // Copy current content and assets to snapshot
-        await fs.copy(paths.contentDir, path.join(snapshotDir, 'content'));
-        await fs.copy(paths.assetsDir, path.join(snapshotDir, 'assets'));
-
-        // Calculate size
-        const calculateDirSize = async (dirPath: string): Promise<number> => {
-          let total = 0;
-          try {
-            const entries = await fs.readdir(dirPath, { withFileTypes: true });
-            for (const entry of entries) {
-              const entryPath = path.join(dirPath, entry.name);
-              if (entry.isDirectory()) {
-                total += await calculateDirSize(entryPath);
-              } else {
-                const stat = await fs.stat(entryPath);
-                total += stat.size;
-              }
-            }
-          } catch {
-            // Directory doesn't exist
-          }
-          return total;
-        };
-
-        const size = await calculateDirSize(snapshotDir);
-
-        // Update snapshots index
-        const indexPath = path.join(snapshotsDir, 'index.json');
-        let index: { snapshots: Array<{ id: string; name: string; createdAt: string; createdBy: string; size: number }> } = { snapshots: [] };
-        try {
-          const content = await fs.readFile(indexPath, 'utf8');
-          index = JSON.parse(content);
-        } catch {
-          // No existing index
-        }
-
-        index.snapshots.unshift({
-          id: snapshotId,
-          name: snapshotName,
-          createdAt: new Date().toISOString(),
-          createdBy: 'staging-webhook',
-          size,
-        });
-
-        await fs.writeFile(indexPath, JSON.stringify(index, null, 2));
-        logger.info(`[webhook] Created snapshot: ${snapshotName} (${snapshotId})`);
-
-        // Step 2: Export products to Stripe live mode
-        let stripeSync = null;
-        let stripeMessage = 'Stripe sync not available';
-
-        if (stripeSyncService) {
-          try {
-            const syncResult = await stripeSyncService.exportAllToStripe();
-            stripeSync = syncResult;
-            const hasErrors = syncResult.errors.length > 0;
-            stripeMessage = hasErrors
-              ? `Exported ${syncResult.exported} products with ${syncResult.errors.length} errors`
-              : `Exported ${syncResult.exported} products to Stripe (${syncResult.skipped} already synced)`;
-            logger.info(`[webhook] ${stripeMessage}`);
-          } catch (error) {
-            const errMsg = error instanceof Error ? error.message : 'Unknown error';
-            stripeMessage = `Stripe export failed: ${errMsg}`;
-            logger.error(`[webhook] ${stripeMessage}`);
-          }
-        }
-
-        respondJson(res, 200, {
-          success: true,
-          message: `Snapshot created and ${stripeMessage}`,
-          snapshotId,
-          snapshotName,
-          stripeSync,
-        });
-        return;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Webhook failed';
-        logger.error('[webhook] Promotion webhook error:', error);
-        respondJson(res, 500, { error: message });
-        return;
-      }
     }
 
     if (requestUrl.pathname === '/__ual/runtime' && req.method === 'GET') {
@@ -1987,16 +1384,7 @@ export const startDevServer = ({
     if (isStripeMode && stripeService && requestUrl.pathname.startsWith('/__ual/api/stripe')) {
       logger.info(`[devserver] Stripe API: ${requestMethod} ${requestPath}`);
       try {
-        const handled = await handleStripeApi(
-          req,
-          res,
-          paths,
-          stripeService,
-          stripeSyncService,
-          requestUrl,
-          baseUrl,
-          logger,
-        );
+        const handled = await handleStripeApi(req, res, paths, stripeService, requestUrl, baseUrl, logger);
         if (handled) {
           return;
         }
@@ -2011,7 +1399,7 @@ export const startDevServer = ({
     if (isStripeMode && requestUrl.pathname.startsWith('/__ual/api/admin/settings')) {
       logger.info(`[devserver] Settings API: ${requestMethod} ${requestPath}`);
       try {
-        const handled = await handleAdminSettingsApi(req, res, requestUrl, logger, stripeConfig?.mode);
+        const handled = await handleAdminSettingsApi(req, res, requestUrl, logger);
         if (handled) {
           return;
         }
@@ -2037,7 +1425,7 @@ export const startDevServer = ({
       }
     }
 
-    // Handle promotion API endpoints (only in Stripe mode on staging)
+    // Handle promotion API endpoints (only in Stripe mode, requires is_santa)
     if (isStripeMode && requestUrl.pathname.startsWith('/__ual/api/admin/promote')) {
       logger.info(`[devserver] Promotion API: ${requestMethod} ${requestPath}`);
       try {
@@ -2048,41 +1436,6 @@ export const startDevServer = ({
       } catch (error) {
         logger.error('Promotion API failed', error);
         respondJson(res, 500, { message: 'Promotion API error' });
-        return;
-      }
-    }
-
-    // Handle snapshots API endpoints (available on both staging and production)
-    if (isStripeMode && requestUrl.pathname.startsWith('/__ual/api/admin/snapshots')) {
-      logger.info(`[devserver] Snapshots API: ${requestMethod} ${requestPath}`);
-      try {
-        const handled = await handleSnapshotsApi(req, res, paths, requestUrl, logger);
-        if (handled) {
-          return;
-        }
-      } catch (error) {
-        logger.error('Snapshots API failed', error);
-        respondJson(res, 500, { message: 'Snapshots API error' });
-        return;
-      }
-    }
-
-    // Handle contact form submissions (public endpoint) - BEFORE general admin API
-    if (requestUrl.pathname === '/__ual/api/contact') {
-      logger.info(`[devserver] Contact API: ${requestMethod} ${requestPath}`);
-      try {
-        const emailConfig = createEmailConfig();
-        const handled = await handleContactApi(req, res, requestUrl, {
-          contentDir: paths.contentDir,
-          emailConfig,
-          logger,
-        });
-        if (handled) {
-          return;
-        }
-      } catch (error) {
-        logger.error('Contact API failed', error);
-        respondJson(res, 500, { message: 'Contact API error' });
         return;
       }
     }
@@ -2103,11 +1456,7 @@ export const startDevServer = ({
 
     try {
       logger.info(`[devserver] Serving static: ${requestPath} from ${distDir}`);
-      await serveStatic(req, res, distDir, {
-        adminAssetsDir,
-        sourceAssetsDir: paths.assetsDir,
-        runtimeConfig: runtimeState,
-      });
+      await serveStatic(req, res, distDir, { adminAssetsDir, runtimeConfig: runtimeState });
     } catch (error) {
       logger.error('Error serving request', error);
       res.statusCode = 500;

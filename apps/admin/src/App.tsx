@@ -5,9 +5,7 @@ import { ContentStudio } from './features/cms/ContentStudio';
 import { CommerceSuite } from './features/commerce/CommerceSuite';
 import { StripeCommerce } from './features/stripe/StripeCommerce';
 import { StagingSettings } from './features/settings/StagingSettings';
-import { CrawlingSettings } from './features/settings/CrawlingSettings';
 import { PromotionPanel } from './features/settings/PromotionPanel';
-import { SnapshotsPanel } from './features/settings/SnapshotsPanel';
 import { LoginPage } from './features/auth/LoginPage';
 import { useAuth } from './hooks/useAuth';
 import { isStripeMode, getStripeMode } from './lib/runtime-config';
@@ -29,9 +27,7 @@ export const App = () => {
   const stripeEnv = getStripeMode();
   const isStaging = stripeEnv === 'staging';
   const isSanta = session?.isSanta ?? false;
-  const isAuthenticated = session?.authenticated ?? false;
-  // Show settings tab to all authenticated admins in Stripe mode
-  const showSettings = stripeMode && isAuthenticated;
+  const showSettings = stripeMode && (isSanta || isStaging);
   const [view, setView] = useState<AdminView>(stripeMode ? 'stripe' : 'content');
 
   // Show loading state while checking auth
@@ -44,12 +40,8 @@ export const App = () => {
     return <LoginPage />;
   }
 
-  const navigateToSettings = () => {
-    setView('settings');
-  };
-
   return (
-    <AdminShell onNavigateSettings={navigateToSettings}>
+    <AdminShell>
       <Tabs value={view} onValueChange={(value) => setView(value as AdminView)} className="flex-1">
         <TabsList className="mb-6 w-full justify-start rounded-2xl bg-white/80 p-1 shadow-sm">
           <TabsTrigger value="content" className="flex-1">
@@ -90,14 +82,8 @@ export const App = () => {
         {showSettings && (
           <TabsContent value="settings">
             <div className="space-y-6">
-              {/* Santa settings - always visible so any admin can disable bypass */}
               <StagingSettings />
-              {/* Crawling settings - control search engine indexing */}
-              <CrawlingSettings />
-              {/* On staging: show promotion panel to push to production */}
-              {isStaging && <PromotionPanel />}
-              {/* On both staging and production: show snapshots panel */}
-              <SnapshotsPanel />
+              {isSanta && <PromotionPanel />}
             </div>
           </TabsContent>
         )}
