@@ -764,18 +764,24 @@ const handleAssetsApi = async (
 
     // Decode base64 and save to assets directory
     const buffer = Buffer.from(data, 'base64');
-    
+
     // Validate decoded file size (max 5MB)
     const maxFileSize = 5 * 1024 * 1024;
     if (buffer.length > maxFileSize) {
       respondJson(res, 400, { error: `File too large. Maximum size is 5MB, got ${(buffer.length / 1024 / 1024).toFixed(2)}MB` });
       return true;
     }
-    
+
     const assetPath = path.join(paths.assetsDir, finalFilename);
 
     await fs.ensureDir(paths.assetsDir);
     await fs.writeFile(assetPath, buffer);
+
+    // Also copy to dist/assets for immediate serving
+    const distAssetsDir = path.join(paths.outputDir, 'assets');
+    const distAssetPath = path.join(distAssetsDir, finalFilename);
+    await fs.ensureDir(distAssetsDir);
+    await fs.writeFile(distAssetPath, buffer);
 
     logger.info(`[assets] Uploaded: ${finalFilename} (${buffer.length} bytes) by ${req.user.sub}`);
 
