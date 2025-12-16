@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { Upload, X, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from './button';
 import { Label } from './label';
@@ -101,6 +101,16 @@ export const ImageUpload = ({
 
   const isExternalUrl = value.startsWith('http://') || value.startsWith('https://');
   const hasImage = Boolean(value);
+  
+  // Generate a cache-busting key based on the URL to force image reload on change
+  const imageSrc = useMemo(() => {
+    if (!value) return '';
+    if (isExternalUrl) return value;
+    // Add timestamp from filename (if present) or use URL as-is
+    const base = `${getApiBase()}${value}`;
+    // Add cache buster to force reload
+    return `${base}${value.includes('?') ? '&' : '?'}v=${Date.now()}`;
+  }, [value, isExternalUrl]);
 
   return (
     <div className="space-y-3">
@@ -121,7 +131,8 @@ export const ImageUpload = ({
         <div className="flex items-start gap-3">
           <div className="relative">
             <img
-              src={isExternalUrl ? value : `${getApiBase()}${value}`}
+              key={value} // Force re-mount when URL changes
+              src={imageSrc}
               alt="Preview"
               className="h-24 w-24 rounded-lg border object-cover"
               onError={(e) => {
