@@ -986,6 +986,228 @@ const handlePromotionApi = async (
   }
 };
 
+// Snapshot types
+type Snapshot = {
+  id: string;
+  name: string;
+  createdAt: string;
+  createdBy: string;
+  size: number;
+};
+
+type SnapshotManifest = {
+  id: string;
+  name: string;
+  createdAt: string;
+  createdBy: string;
+};
+
+const SNAPSHOTS_DIR_NAME = '.ual-snapshots';
+
+const getSnapshotsDir = (paths: PathConfig): string => path.join(paths.rootDir, SNAPSHOTS_DIR_NAME);
+
+const calculateDirSize = async (dirPath: string): Promise<number> => {
+  let totalSize = 0;
+  const exists = await fs.pathExists(dirPath);
+  if (!exists) return 0;
+
+  const entries = await fs.readdir(dirPath, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      totalSize += await calculateDirSize(fullPath);
+    } else if (entry.isFile()) {
+      const stats = await fs.stat(fullPath);
+      totalSize += stats.size;
+    }
+  }
+  return totalSize;
+};
+
+const handleSnapshotsApi = async (
+  req: AuthenticatedRequest,
+  res: http.ServerResponse<http.IncomingMessage>,
+  paths: PathConfig,
+  requestUrl: URL,
+  logger: Logger,
+): Promise<boolean> => {
+  if (!requestUrl.pathname.startsWith('/__ual/api/admin/snapshots')) {
+    return false;
+  }
+
+  const method = req.method ?? 'GET';
+  const subPath = requestUrl.pathname.replace('/__ual/api/admin/snapshots', '').replace(/^\/+/, '');
+  const segments = subPath ? subPath.split('/').filter(Boolean) : [];
+  const snapshotsDir = getSnapshotsDir(paths);
+
+  // Require authentication for all snapshot operations
+  if (!req.user) {
+    respondJson(res, 401, { error: 'Authentication required' });
+    return true;
+  }
+
+  try {
+    // GET /__ual/api/admin/snapshots - List all snapshots
+    if (segments.length === 0 && method === 'GET') {
+      await fs.ensureDir(snapshotsDir);
+      const entries = await fs.readdir(snapshotsDir, { withFileTypes: true });
+      const snapshots: Snapshot[] = [];
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const manifestPath = path.join(snapshotsDir, entry.name, 'manifest.json');
+        const manifestExists = await fs.pathExists(manifestPath);
+        if (!manifestExists) continue;
+
+        try {
+          const manifest: SnapshotManifest = await fs.readJson(manifestPath);
+          const size = await calculateDirSize(path.join(snapshotsDir, entry.name));
+          snapshots.push({
+            id: manifest.id,
+            name: manifest.name,
+            createdAt: manifest.createdAt,
+            createdBy: manifest.createdBy,
+            size,
+          });
+        } catch (e) {
+          logger.warn(`[snapshots] Failed to read manifest for ${entry.name}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+
+      // Sort by createdAt descending (newest first)
+      snapshots.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      respondJson(res, 200, { snapshots });
+      return true;
+    }
+
+    // POST /__ual/api/admin/snapshots - Create a snapshot
+    if (segments.length === 0 && method === 'POST') {
+      const body = await readJsonBody(req);
+      const name = typeof body.name === 'string' && body.name.trim()
+        ? body.name.trim()
+        : `Snapshot ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
+
+      const id = `snap-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const snapshotDir = path.join(snapshotsDir, id);
+
+      await fs.ensureDir(snapshotDir);
+
+      // Copy content directory
+      const contentSrc = paths.contentDir;
+      const contentDest = path.join(snapshotDir, 'content');
+      if (await fs.pathExists(contentSrc)) {
+        await fs.copy(contentSrc, contentDest);
+      }
+
+      // Copy assets directory
+      const assetsSrc = paths.assetsDir;
+      const assetsDest = path.join(snapshotDir, 'assets');
+      if (await fs.pathExists(assetsSrc)) {
+        await fs.copy(assetsSrc, assetsDest);
+      }
+
+      // Write manifest
+      const manifest: SnapshotManifest = {
+        id,
+        name,
+        createdAt: new Date().toISOString(),
+        createdBy: req.user.sub ?? 'unknown',
+      };
+      await fs.writeJson(path.join(snapshotDir, 'manifest.json'), manifest, { spaces: 2 });
+
+      logger.info(`[snapshots] Created snapshot "${name}" (${id}) by ${req.user.sub}`);
+      const size = await calculateDirSize(snapshotDir);
+      respondJson(res, 201, { snapshot: { ...manifest, size } });
+      return true;
+    }
+
+    // POST /__ual/api/admin/snapshots/:id/restore - Restore a snapshot
+    if (segments.length === 2 && segments[1] === 'restore' && method === 'POST') {
+      const snapshotId = segments[0]!;
+      const snapshotDir = path.join(snapshotsDir, snapshotId);
+      const manifestPath = path.join(snapshotDir, 'manifest.json');
+
+      if (!(await fs.pathExists(manifestPath))) {
+        respondJson(res, 404, { error: 'Snapshot not found' });
+        return true;
+      }
+
+      const manifest: SnapshotManifest = await fs.readJson(manifestPath);
+
+      // Restore content directory
+      const contentSrc = path.join(snapshotDir, 'content');
+      if (await fs.pathExists(contentSrc)) {
+        // Remove current content
+        await fs.remove(paths.contentDir);
+        await fs.copy(contentSrc, paths.contentDir);
+      }
+
+      // Restore assets directory
+      const assetsSrc = path.join(snapshotDir, 'assets');
+      if (await fs.pathExists(assetsSrc)) {
+        // Remove current assets
+        await fs.remove(paths.assetsDir);
+        await fs.copy(assetsSrc, paths.assetsDir);
+      }
+
+      logger.info(`[snapshots] Restored snapshot "${manifest.name}" (${snapshotId}) by ${req.user.sub}`);
+      respondJson(res, 200, { success: true, message: `Restored snapshot "${manifest.name}"` });
+      return true;
+    }
+
+    // PATCH /__ual/api/admin/snapshots/:id - Rename a snapshot
+    if (segments.length === 1 && method === 'PATCH') {
+      const snapshotId = segments[0]!;
+      const snapshotDir = path.join(snapshotsDir, snapshotId);
+      const manifestPath = path.join(snapshotDir, 'manifest.json');
+
+      if (!(await fs.pathExists(manifestPath))) {
+        respondJson(res, 404, { error: 'Snapshot not found' });
+        return true;
+      }
+
+      const body = await readJsonBody(req);
+      if (typeof body.name !== 'string' || !body.name.trim()) {
+        respondJson(res, 400, { error: 'Name is required' });
+        return true;
+      }
+
+      const manifest: SnapshotManifest = await fs.readJson(manifestPath);
+      manifest.name = body.name.trim();
+      await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+      logger.info(`[snapshots] Renamed snapshot ${snapshotId} to "${manifest.name}" by ${req.user.sub}`);
+      const size = await calculateDirSize(snapshotDir);
+      respondJson(res, 200, { snapshot: { ...manifest, size } });
+      return true;
+    }
+
+    // DELETE /__ual/api/admin/snapshots/:id - Delete a snapshot
+    if (segments.length === 1 && method === 'DELETE') {
+      const snapshotId = segments[0]!;
+      const snapshotDir = path.join(snapshotsDir, snapshotId);
+
+      if (!(await fs.pathExists(snapshotDir))) {
+        respondJson(res, 404, { error: 'Snapshot not found' });
+        return true;
+      }
+
+      await fs.remove(snapshotDir);
+      logger.info(`[snapshots] Deleted snapshot ${snapshotId} by ${req.user.sub}`);
+      respondJson(res, 200, { success: true });
+      return true;
+    }
+
+    respondJson(res, 404, { error: 'Unknown snapshots endpoint' });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Snapshots request failed';
+    logger.error('[snapshots] Error:', error);
+    respondJson(res, 500, { error: message });
+    return true;
+  }
+};
+
 const handleCommerceApi = async (
   req: http.IncomingMessage,
   res: http.ServerResponse<http.IncomingMessage>,
@@ -1466,6 +1688,21 @@ export const startDevServer = ({
       } catch (error) {
         logger.error('Settings API failed', error);
         respondJson(res, 500, { message: 'Settings API error' });
+        return;
+      }
+    }
+
+    // Handle snapshots API endpoints (only in Stripe mode)
+    if (isStripeMode && requestUrl.pathname.startsWith('/__ual/api/admin/snapshots')) {
+      logger.info(`[devserver] Snapshots API: ${requestMethod} ${requestPath}`);
+      try {
+        const handled = await handleSnapshotsApi(req, res, paths, requestUrl, logger);
+        if (handled) {
+          return;
+        }
+      } catch (error) {
+        logger.error('Snapshots API failed', error);
+        respondJson(res, 500, { message: 'Snapshots API error' });
         return;
       }
     }
