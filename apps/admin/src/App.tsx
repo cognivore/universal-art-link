@@ -4,13 +4,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { ContentStudio } from './features/cms/ContentStudio';
 import { CommerceSuite } from './features/commerce/CommerceSuite';
 import { StripeCommerce } from './features/stripe/StripeCommerce';
+import { GalleryPage } from './features/gallery';
 import { StagingSettings } from './features/settings/StagingSettings';
 import { PromotionPanel } from './features/settings/PromotionPanel';
 import { LoginPage } from './features/auth/LoginPage';
 import { useAuth } from './hooks/useAuth';
 import { isStripeMode, getStripeMode } from './lib/runtime-config';
 
-type AdminView = 'content' | 'commerce' | 'stripe' | 'settings';
+type AdminView = 'content' | 'gallery' | 'commerce' | 'stripe' | 'settings';
 
 const LoadingSpinner = () => (
   <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-slate-100 to-slate-200">
@@ -47,6 +48,9 @@ export const App = () => {
           <TabsTrigger value="content" className="flex-1">
             Content Studio
           </TabsTrigger>
+          <TabsTrigger value="gallery" className="flex-1">
+            Gallery
+          </TabsTrigger>
           {!stripeMode && (
             <TabsTrigger value="commerce" className="flex-1">
               Shopify Commerce
@@ -68,6 +72,9 @@ export const App = () => {
         </TabsList>
         <TabsContent value="content">
           <ContentStudio />
+        </TabsContent>
+        <TabsContent value="gallery">
+          <GalleryPage />
         </TabsContent>
         {!stripeMode && (
           <TabsContent value="commerce">

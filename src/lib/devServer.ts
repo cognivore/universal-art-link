@@ -645,22 +645,82 @@ const handleStripeApi = async (
   }
 };
 
-const handleAssetUploadApi = async (
+const handleAssetsApi = async (
   req: AuthenticatedRequest,
   res: http.ServerResponse<http.IncomingMessage>,
   paths: PathConfig,
   requestUrl: URL,
   logger: Logger,
 ): Promise<boolean> => {
-  if (requestUrl.pathname !== '/__ual/api/assets/upload') {
+  if (!requestUrl.pathname.startsWith('/__ual/api/assets')) {
     return false;
   }
 
   const method = req.method ?? 'GET';
 
-  // Only POST is supported
-  if (method !== 'POST') {
-    respondJson(res, 405, { error: 'Method not allowed' });
+  // GET /__ual/api/assets - List all assets
+  if (requestUrl.pathname === '/__ual/api/assets' && method === 'GET') {
+    try {
+      const assetsDir = paths.assetsDir;
+      const exists = await fs.pathExists(assetsDir);
+      if (!exists) {
+        respondJson(res, 200, { assets: [] });
+        return true;
+      }
+
+      const entries = await fs.readdir(assetsDir, { withFileTypes: true });
+      const assets: Array<{
+        filename: string;
+        url: string;
+        type: string;
+        size: number;
+        modifiedAt: string;
+      }> = [];
+
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+
+        const ext = path.extname(entry.name).toLowerCase();
+        const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'];
+        if (!imageExtensions.includes(ext)) continue;
+
+        const filePath = path.join(assetsDir, entry.name);
+        const stats = await fs.stat(filePath);
+
+        const mimeTypes: Record<string, string> = {
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.png': 'image/png',
+          '.gif': 'image/gif',
+          '.webp': 'image/webp',
+          '.svg': 'image/svg+xml',
+        };
+
+        assets.push({
+          filename: entry.name,
+          url: `/assets/${entry.name}`,
+          type: mimeTypes[ext] ?? 'image/unknown',
+          size: stats.size,
+          modifiedAt: stats.mtime.toISOString(),
+        });
+      }
+
+      // Sort by modified date, newest first
+      assets.sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime());
+
+      respondJson(res, 200, { assets });
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to list assets';
+      logger.error('[assets] List error:', error);
+      respondJson(res, 500, { error: message });
+      return true;
+    }
+  }
+
+  // POST /__ual/api/assets/upload - Upload new asset
+  if (requestUrl.pathname !== '/__ual/api/assets/upload' || method !== 'POST') {
+    respondJson(res, 404, { error: 'Unknown assets endpoint' });
     return true;
   }
 
@@ -1410,17 +1470,17 @@ export const startDevServer = ({
       }
     }
 
-    // Handle asset upload API (only in Stripe mode)
-    if (isStripeMode && requestUrl.pathname === '/__ual/api/assets/upload') {
-      logger.info(`[devserver] Asset Upload: ${requestMethod} ${requestPath}`);
+    // Handle assets API (list and upload) - only in Stripe mode
+    if (isStripeMode && requestUrl.pathname.startsWith('/__ual/api/assets')) {
+      logger.info(`[devserver] Assets API: ${requestMethod} ${requestPath}`);
       try {
-        const handled = await handleAssetUploadApi(req, res, paths, requestUrl, logger);
+        const handled = await handleAssetsApi(req, res, paths, requestUrl, logger);
         if (handled) {
           return;
         }
       } catch (error) {
-        logger.error('Asset upload failed', error);
-        respondJson(res, 500, { message: 'Asset upload error' });
+        logger.error('Assets API failed', error);
+        respondJson(res, 500, { message: 'Assets API error' });
         return;
       }
     }

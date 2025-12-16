@@ -2,6 +2,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
+import { GalleryPicker } from '../gallery';
 import { clone } from './helpers';
 import type { FieldDefinition, GroupDefinition, ListDefinition } from './helpers';
 
@@ -57,7 +58,34 @@ type FieldInputProps = {
   readonly onChange: (value: unknown) => void;
 };
 
+// Check if a field should use the gallery picker (image-related fields)
+const isImageField = (field: FieldDefinition): boolean => {
+  const imageKeywords = ['image', 'src', 'url', 'cover', 'media', 'logo', 'icon', 'avatar', 'thumbnail'];
+  const keyLower = field.key.toLowerCase();
+  const labelLower = field.label.toLowerCase();
+
+  // Check if key or label contains image-related keywords
+  // and the field type is 'text' (not explicitly something else)
+  if (field.type !== 'text') return false;
+
+  return imageKeywords.some(
+    (keyword) => keyLower.includes(keyword) || labelLower.includes(keyword)
+  );
+};
+
 const FieldInput = ({ field, value, onChange }: FieldInputProps) => {
+  // Image fields get the gallery picker
+  if (isImageField(field)) {
+    return (
+      <GalleryPicker
+        label={field.label}
+        value={String(value ?? '')}
+        onChange={(url) => onChange(url)}
+        placeholder={field.placeholder}
+      />
+    );
+  }
+
   if (field.type === 'textarea') {
     return (
       <div className="space-y-1">
