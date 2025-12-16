@@ -7,6 +7,7 @@ import { StripeCommerce } from './features/stripe/StripeCommerce';
 import { GalleryPage } from './features/gallery';
 import { StagingSettings } from './features/settings/StagingSettings';
 import { PromotionPanel } from './features/settings/PromotionPanel';
+import { SnapshotsPanel } from './features/settings/SnapshotsPanel';
 import { LoginPage } from './features/auth/LoginPage';
 import { useAuth } from './hooks/useAuth';
 import { isStripeMode, getStripeMode } from './lib/runtime-config';
@@ -28,7 +29,9 @@ export const App = () => {
   const stripeEnv = getStripeMode();
   const isStaging = stripeEnv === 'staging';
   const isSanta = session?.isSanta ?? false;
-  const showSettings = stripeMode && (isSanta || isStaging);
+  const showAdvancedSettings = stripeMode && (isSanta || isStaging);
+  // Settings tab (with Snapshots) is always visible for authenticated users in Stripe mode
+  const showSettings = stripeMode;
   const [view, setView] = useState<AdminView>(stripeMode ? 'stripe' : 'content');
 
   // Show loading state while checking auth
@@ -89,7 +92,8 @@ export const App = () => {
         {showSettings && (
           <TabsContent value="settings">
             <div className="space-y-6">
-              <StagingSettings />
+              <SnapshotsPanel />
+              {showAdvancedSettings && <StagingSettings />}
               {isSanta && <PromotionPanel />}
             </div>
           </TabsContent>
