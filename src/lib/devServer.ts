@@ -203,11 +203,10 @@ const respondJson = (res: http.ServerResponse<http.IncomingMessage>, status: num
   res.end(JSON.stringify(payload));
 };
 
-const readJsonBody = async (req: http.IncomingMessage): Promise<Record<string, unknown>> =>
+const readJsonBody = async (req: http.IncomingMessage, maxBytes = 1 * 1024 * 1024): Promise<Record<string, unknown>> =>
   new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let total = 0;
-    const maxBytes = 1 * 1024 * 1024;
     req.on('data', (chunk: Buffer) => {
       chunks.push(chunk);
       total += chunk.length;
@@ -731,7 +730,8 @@ const handleAssetsApi = async (
   }
 
   try {
-    const body = await readJsonBody(req);
+    // Use 10MB limit for image uploads (base64 encoded images are ~33% larger)
+    const body = await readJsonBody(req, 10 * 1024 * 1024);
     const { filename, data, mimeType } = body as {
       filename?: string;
       data?: string; // base64 encoded
@@ -764,6 +764,14 @@ const handleAssetsApi = async (
 
     // Decode base64 and save to assets directory
     const buffer = Buffer.from(data, 'base64');
+    
+    // Validate decoded file size (max 5MB)
+    const maxFileSize = 5 * 1024 * 1024;
+    if (buffer.length > maxFileSize) {
+      respondJson(res, 400, { error: `File too large. Maximum size is 5MB, got ${(buffer.length / 1024 / 1024).toFixed(2)}MB` });
+      return true;
+    }
+    
     const assetPath = path.join(paths.assetsDir, finalFilename);
 
     await fs.ensureDir(paths.assetsDir);
