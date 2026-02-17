@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ual}
+      POSTGRES_USER: ${POSTGRES_USER:-ual}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ual_dev}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ual}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "${CADDY_HTTP_PORT:-8080}:80"
+      - "${CADDY_HTTPS_PORT:-8443}:443"
+      - "${CADDY_ADMIN_PORT:-2019}:2019"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+      - releases:/srv/releases
+      - static:/srv/static
+      - admin_dist:/srv/admin
+
+  imgproxy:
+    image: darthsim/imgproxy:latest
+    ports:
+      - "${IMGPROXY_PORT:-8081}:8080"
+    environment:
+      IMGPROXY_BIND: ":8080"
+      IMGPROXY_LOCAL_FILESYSTEM_ROOT: /data
+    volumes:
+      - media:/data
+    profiles:
+      - imgproxy
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
+  releases:
+  static:
+  admin_dist:
+  media:

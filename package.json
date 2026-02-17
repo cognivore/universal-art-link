@@ -1,64 +1,28 @@
 {
-  "name": "universal-art-link",
-  "version": "0.1.0",
-  "description": "Local-first Cargo-style static site constructor with editorial design defaults.",
-  "type": "module",
+  "name": "universal-artistic-link",
+  "version": "2.0.0",
   "private": true,
-  "bin": {
-    "universal-art-link": "build/cli.js"
-  },
+  "type": "module",
+  "packageManager": "pnpm@10.22.0",
+  "description": "Multi-tenant browser-only CMS with CRDT editing, atomic publish, and Stripe integration.",
   "scripts": {
-    "clean": "rimraf build dist",
-    "build": "tsc --project tsconfig.json && pnpm --filter ual-admin build",
-    "dev": "tsx src/cli.ts dev",
-    "cli": "tsx src/cli.ts",
-    "admin:dev": "pnpm --filter ual-admin dev",
-    "admin:build": "pnpm --filter ual-admin build",
-    "admin": "node admin/server.js",
-    "lint": "tsc --noEmit",
-    "test": "node --test --import tsx src/**/*.test.ts",
-    "test:templates": "node --test --import tsx src/lib/template.test.ts",
-    "test:e2e": "node --test tests/e2e/**/*.test.js",
-    "test:e2e:legacy": "node --test tests/e2e/admin-panel.test.js",
-    "test:e2e:shadcn": "node --test tests/e2e/shadcn-admin.test.js",
-    "test:e2e:blog": "node --test tests/e2e/blog-cms.test.js",
-    "test:e2e:staging": "node --test tests/e2e/staging-stripe.test.js",
-    "test:e2e:stripe": "node --test tests/e2e/stripe-integration.test.js",
-    "test:all": "pnpm test && pnpm test:e2e",
-    "staging:jwt": "tsx src/lib/stagingAuth.ts"
-  },
-  "keywords": [
-    "static-site-generator",
-    "editorial",
-    "cargo",
-    "local-first"
-  ],
-  "author": "",
-  "license": "MIT",
-  "dependencies": {
-    "adm-zip": "^0.5.16",
-    "archiver": "^6.0.2",
-    "chokidar": "^4.0.1",
-    "commander": "^12.1.0",
-    "express": "^4.19.2",
-    "fs-extra": "^11.2.0",
-    "handlebars": "^4.7.8",
-    "kleur": "^4.1.5",
-    "stripe": "^17.7.0",
-    "yaml": "^2.6.0",
-    "zod": "^3.23.8"
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "typecheck": "turbo typecheck",
+    "db:migrate": "node infra/migrations/runner.js",
+    "test:e2e": "vitest run --config tests/e2e/vitest.config.ts",
+    "clean": "turbo clean"
   },
   "devDependencies": {
-    "@types/adm-zip": "^0.5.7",
-    "@types/archiver": "^7.0.0",
-    "@types/fs-extra": "^11.0.4",
-    "@types/handlebars": "^4.1.0",
-    "@types/node": "^22.7.4",
-    "rimraf": "^5.0.10",
-    "selenium-webdriver": "^4.25.0",
-    "ts-node": "^10.9.2",
-    "tslib": "^2.7.0",
-    "tsx": "^4.19.1",
-    "typescript": "^5.6.3"
+    "@types/node": "^25.2.3",
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.4",
+    "yjs": "^13.6.29"
+  },
+  "dependencies": {
+    "pg": "^8.18.0"
   }
 }

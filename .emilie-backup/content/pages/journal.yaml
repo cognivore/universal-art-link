@@ -1,0 +1,98 @@
+slug: /journal
+title: Journal
+layout: journal
+journalPosts:
+  - id: post-1
+    title: "[Your post title]"
+    slug: /journal/post-1
+    excerpt: "[Brief teaser]"
+    publishedAt: 2025-03-15
+    coverImage:
+      src: /assets/project-orbit-1.svg
+      alt: "[Image description]"
+    blocks:
+      - type: text
+        title: "[Section heading]"
+        body: |
+          Share specific moments, not general advice. When something goes wrong, explain what it taught you. Let your process show — the decisions, the doubts, the adjustments. Write as if explaining to someone in the room with you.
+      - type: image
+        media:
+          src: /assets/project-orbit-2.svg
+          alt: "[Image description]"
+        caption: "[Caption]"
+  - id: post-2
+    title: "[Your post title]"
+    slug: /journal/post-2
+    excerpt: "[Brief teaser]"
+    publishedAt: 2025-02-01
+    coverImage:
+      src: /assets/project-orbit-3.svg
+      alt: "[Image description]"
+      focalPoint: right
+    blocks:
+      - type: image-grid
+        items:
+          - media:
+              src: /assets/project-orbit-1.svg
+              alt: "[Image description]"
+              focalPoint: center
+            caption: "[Caption]"
+          - media:
+              src: /assets/project-orbit-2.svg
+              alt: "[Image description]"
+              focalPoint: center
+            caption: "[Caption]"
+          - media:
+              src: /assets/project-orbit-3.svg
+              alt: "[Image description]"
+              focalPoint: right
+            caption: "[Caption]"
+      - type: text
+        title: "[Section heading]"
+        body: |
+          Share specific moments, not general advice. When something goes wrong, explain what it taught you. Let your process show — the decisions, the doubts, the adjustments. Write as if explaining to someone in the room with you.
+      - type: quote
+        quote: "[Quote text]"
+        cite: "[Attribution]"
+      - type: text
+        title: "[Section heading]"
+        body: |
+          Share specific moments, not general advice. When something goes wrong, explain what it taught you. Let your process show — the decisions, the doubts, the adjustments. Write as if explaining to someone in the room with you.
+  - id: post-3
+    title: "[Your post title]"
+    slug: /journal/post-3
+    excerpt: "[Brief teaser]"
+    publishedAt: 2025-01-10
+    coverImage:
+      src: /assets/project-resonant.svg
+      alt: "[Image description]"
+    blocks:
+      - type: text
+        title: "[Section heading]"
+        body: |
+          Share specific moments, not general advice. When something goes wrong, explain what it taught you. Let your process show — the decisions, the doubts, the adjustments. Write as if explaining to someone in the room with you.
+      - type: image-grid
+        items:
+          - media:
+              src: /assets/project-signal.svg
+              alt: "[Image description]"
+            caption: "[Caption]"
+          - media:
+              src: /assets/project-dawn.svg
+              alt: "[Image description]"
+            caption: "[Caption]"
+sections:
+  - type: hero
+    kicker: Journal
+    title: journal
+    subtitle: ""
+    body: |-
+      Here i will share some easy recipes to make delicious japanese food at home. 
+
+      You can also find some experiences i had or knowledge around the pastry world and food industry. 
+  - type: blog-roll
+    title: Recent Posts
+    posts:
+      - postId: post-1
+      - postId: post-2
+      - postId: post-3

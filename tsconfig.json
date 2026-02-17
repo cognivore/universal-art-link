@@ -1,25 +1,17 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "lib": ["ES2023"],
-    "moduleResolution": "NodeNext",
-    "types": ["node"],
-    "rootDir": "src",
-    "outDir": "build",
-    "declaration": true,
-    "sourceMap": true,
-    "strict": true,
-    "noImplicitOverride": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "useUnknownInCatchVariables": true,
-    "resolveJsonModule": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true
-  },
-  "include": ["src/**/*.ts"]
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/storage" },
+    { "path": "packages/crdt" },
+    { "path": "packages/ui" },
+    { "path": "packages/blocks" },
+    { "path": "packages/renderer" },
+    { "path": "packages/stripe" },
+    { "path": "packages/provisioning" },
+    { "path": "services/api" },
+    { "path": "services/realtime" },
+    { "path": "services/worker" },
+    { "path": "apps/admin-web" }
+  ],
+  "files": []
 }
-

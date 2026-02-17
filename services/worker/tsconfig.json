@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "composite": true
+  },
+  "references": [
+    { "path": "../../packages/core" },
+    { "path": "../../packages/storage" },
+    { "path": "../../packages/renderer" },
+    { "path": "../../packages/provisioning" },
+    { "path": "../../packages/crdt" }
+  ],
+  "include": ["src/**/*.ts"]
+}

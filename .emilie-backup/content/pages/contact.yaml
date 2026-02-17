@@ -1,0 +1,36 @@
+slug: /contact
+title: Contact
+layout: default
+sections:
+  - type: hero
+    kicker: Get in Touch
+    title: Currently booking classes for Spring 2026
+    subtitle: Workshop inquiries, private lesson requests, or just to say hello — Feel free to write me, I read every message and respond within 48 hours.
+    body: |+
+      [Optional: Add any special notes about your current availability, such as:
+      - 'Private lessons available Tuesday-Thursday'
+      - 'Currently on waitlist for group workshops until April']
+
+  - type: text-columns
+    title: Ways to Connect
+    columns:
+      - label: Class Inquiries
+        body: You can use the form below or email directly. Include which class interests you and any dietary restrictions, I'll follow up with available dates and payment details.
+      - label: Private Lessons
+        body: One-on-one or small group sessions tailored to your goals. Perfect for special occasions, skill-building, or exploring techniques not covered in regular workshops. Minimum 2-hour booking.
+  - type: list-section
+    title: FAQ
+    items:
+      - label: I'm a complete beginner — is that okay?
+        detail: Absolutely. Most of my students start with small to zero pastry experience. Patience matters more than skill.
+      - label: Can children participate ?
+        detail: "I suggest children to be at least 14 years old to participate. The movements with the hands are precise and it can become a more frustrating experience than a fun one for children that are too small. But if their very crafty and already love manual work, you can send me an email and see the options : You know your child better !  "
+      - label: Can I book a class as a gift?
+        detail: "Yes — gift certificates available for any class. They can later chose the date and  that suit them best "
+      - label: Do you accommodate dietary restrictions?
+        detail: Yes, if the recipes are not vegan or allergen-free i can give you subsitutes. Just email me in advance so that i can get the lesson ready to meet your needs.
+  - type: contact
+    title: Send a Message
+    body: Whether it's a class question, a collaboration idea, or feedback on a recipe from the journal — I'd love to hear from you.
+    email: emilie.mchl@gmail.com
+    formAction: /__ual/api/contact

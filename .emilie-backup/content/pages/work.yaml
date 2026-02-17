@@ -1,0 +1,66 @@
+slug: /classes
+title: Classes & Workshops
+layout: index-grid
+sections:
+  - type: hero
+    kicker: Learn
+    title: Hands-on workshops for curious home bakers
+    subtitle: Small groups, generous instruction, and pastries to take home. All skill levels welcome — patience and curiosity required.
+  - type: projects-grid
+    title: Classes available
+    projects:
+      - title: "Daifuku mochi "
+        role: 2 hours
+        year: "[Season/dates, e.g., 'Spring 2026']"
+        coverImage:
+          src: /assets/project-orbit.svg
+          alt: "[Describe: e.g., 'Seasonal nerikiri shaped like cherry blossoms']"
+        slug: /signature-course
+        span: wide
+      - title: Foundation of wagashi
+        role: 2 hours
+        year: "[Dates, e.g., 'Monthly']"
+        coverImage:
+          src: /assets/project-dawn.svg
+          alt: "[Describe: e.g., 'Assortment of Japanese breads — melon pan, anpan, shokupan']"
+        slug: /classes#bakery-essentials
+      - title: "[Specialty Class, e.g., 'Seasonal Mochi Workshop']"
+        role: "[Format, e.g., 'Single-Day Workshop']"
+        year: "[Frequency, e.g., 'Quarterly']"
+        coverImage:
+          src: /assets/project-resonant.svg
+          alt: "[Describe: e.g., 'Daifuku mochi with strawberry filling']"
+        slug: /classes#mochi-workshop
+        span: tall
+      - title: "[Advanced Class, e.g., 'French-Japanese Fusion Pastry']"
+        role: "[Format, e.g., 'Advanced Workshop']"
+        year: "[Prerequisites note, e.g., 'By application']"
+        coverImage:
+          src: /assets/project-elan.svg
+          alt: "[Describe: e.g., 'Matcha opera cake with gold leaf']"
+        slug: /classes#fusion-pastry
+      - title: "[Private Option, e.g., 'Private Lessons']"
+        role: "[Format, e.g., 'One-on-One or Small Group']"
+        year: "[Availability, e.g., 'Year-round']"
+        coverImage:
+          src: /assets/project-signal.svg
+          alt: "[Describe: e.g., 'Close-up of hands piping decorations']"
+        slug: /contact#private-lessons
+    intro: |-
+      In this section you will find all available classes.
+      Explore detailed descriptions so you can explore, understand and guide you in your choice.
+  - type: text-columns
+    title: What to Expect
+    columns:
+      - label: Class Size
+        body: Maximum 6 students per workshop. Enough space to spread out, enough intimacy for real conversation and individual feedback.
+      - label: What's Included
+        body: |-
+          All ingredients and equipment will be provided. Printed recipes and pastries you made to take home : don't forget to bring a box to transport them safely.
+          Japanese tea service during class with sweets to share.
+      - label: Location
+        body: "[Describe your teaching space: e.g., 'My home studio in [neighborhood], Oakland. Street parking available. Accessible entrance — please message ahead if you need accommodations.']"
+  - type: contact
+    title: Questions About Classes?
+    body: Not sure which class is right for you? Curious about private lessons or group bookings for special occasions? I'm happy to help you find the right fit.
+    email: emilie.mchl@gmail.com

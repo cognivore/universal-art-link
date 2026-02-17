@@ -1,0 +1,88 @@
+slug: /
+title: Japanese Pastry & Wagashi
+description: "Learn traditional Japanese pastry-making through hands-on workshops. "
+layout: default
+sections:
+  - type: hero
+    eyebrow: "[Your location or defining phrase, e.g., 'Oakland-based pastry chef' or 'Traditional techniques, modern kitchen']"
+    kicker: Okashi School
+    title: Teaching the quiet art of Japanese pastry, one fold at a time
+    subtitle: Intimate workshops exploring wagashi, Japanese bakery classics, and the seasonal rhythms that shape each creation. For home bakers ready to slow down and work with patience and intention.
+    body: "[Optional: A brief personal note or philosophy statement that sets the tone for your practice.]"
+    media:
+      src: /assets/hero-still.svg
+      alt: Class about mochi i gave in Khaosiung, Taiwan
+      focalPoint: center
+    primaryCta:
+      label: Explore Classes
+      href: /classes
+    secondaryCta:
+      label: Shop Pastries
+      href: /shop
+  - type: projects-grid
+    title: Current Offerings
+    intro: Small-group workshops designed for focused learning. Each class includes recipes, technique breakdowns, and pastries to take home.
+    projects:
+      - title: "Daifuku "
+        role: "- how to make mochi "
+        year: "[Season or ongoing, e.g., 'Spring 2026']"
+        coverImage:
+          src: /assets/project-orbit.svg
+          alt: "[Describe: e.g., 'Seasonal wagashi arranged on a ceramic plate']"
+          focalPoint: center
+        slug: /signature-course
+        span: wide
+      - title: "Nerikiri sculptures "
+        role: "- how to craft unique pastries "
+        year: "[Season, e.g., 'Ongoing']"
+        coverImage:
+          src: /assets/project-dawn.svg
+          alt: "[Describe: e.g., 'Shokupan loaf with golden crust']"
+        slug: /classes#bakery-essentials
+        span: standard
+      - title: "Group classes "
+        role: "Team-building or group of family and friends "
+        year: "[Availability]"
+        coverImage:
+          src: /assets/project-resonant.svg
+          alt: "[Describe: e.g., 'Chef demonstrating lamination technique']"
+        slug: /contact#private-lessons
+        span: tall
+  - type: text-columns
+    title: My Approach
+    columns:
+      - label: Background
+        body: |-
+          I am born in Paris, from a japanese mother and a french father. Luckily my mother has taught me japanese from a young age and took me there several times to know the culture and my family.
+
+          I have always loved cooking and baking, and would spend a lot of time in the kitchen with my mother or my grandmother. When i moved to Japan at 21, i worked as a cook in different restaurant and realized how i missed making pastries. So i decided to go back to France and got my pastry degree in 2018. From then i have been working for bakeries, restaurants, hotels and pastry shops : french ones and japanese ones.  I worked 5 years in a japanese-french pâtisserie in Paris where i learnt the art of wagashi, that i have been teaching there for 4 three years. Now teaching in London, in english, french, spanish or japanese : Let me know in what language you would like to have the class so I can tailor the class for you !  
+      - label: Philosophy
+        body: |-
+          What i love about pastry is that the more you try the better you get — precise movements need to be repeated until they become intuition. No rushing, no shortcuts, just the satisfaction of mastering a craft. 
+          Here I want to teach you the traditionnal aspect of japanese pastries but accessible, so that you can have all the tools in hands to master it yourself. 
+      - label: Ingredients
+        body: |-
+          Getting good japanese products can be difficult and pricey - also i prefer to aim for local and organic when possible, if not imported from Japan. 
+
+          In London i recommend you to go : 
+
+          -
+          -
+          -
+          -
+  - type: list-section
+    title: "[Section title, e.g., 'What Students Say' or 'As Featured In']"
+    items:
+      - label: "[Student name or publication]"
+        detail: "[Quote excerpt or feature description, e.g., '\"Finally understood why my mochi never worked. Life-changing class.\"']"
+      - label: "[Student name or publication]"
+        detail: "[Quote or description]"
+      - label: "[Student name or publication]"
+        detail: "[Quote or description]"
+      - label: "[Student name or publication]"
+        detail: "[Quote or description]"
+  - type: contact
+    title: Let's learn Together
+    body: Whether you're curious about a workshop, want to discuss private lessons, or have questions about my backgroung — I'd love to hear from you. I respond to every message within 48 hours.
+    email: emilie.mchl@gmail.com
+    formAction: /__ual/api/contact

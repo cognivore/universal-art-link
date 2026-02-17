@@ -1,0 +1,34 @@
+siteTitle: Okashi School — Japanese Pastry & Wagashi
+siteDescription: Teaching the art of Japanese confectionery through intimate workshops and how to make recipes vegan or allergen-free.
+baseUrl: https://okashi-school.com
+favicon: /assets/favicon.svg
+theme:
+  mode: light
+  background: "#ffeded"
+  foreground: "#2d2926"
+  accent: "#d69dcd"
+  muted: "#8b8178"
+  borderSubtle: rgba(45,41,38,0.08)
+  typography:
+    displaySans: "'Cormorant Garamond', 'Noto Serif JP', georgia, serif"
+    bodySans: "'Inter', 'Noto Sans JP', system-ui, -apple-system, sans-serif"
+    accentSerif: "'Cormorant Garamond', 'Noto Serif JP', georgia, serif"
+  density: airy
+navigation:
+  - label: Classes
+    href: /classes
+  - label: Signature Course
+    href: /signature-course
+  - label: Journal
+    href: /journal
+  - label: Shop
+    href: /shop
+  - label: Contact
+    href: /contact
+socialLinks:
+  - label: Instagram
+    href: https://instagram.com/[your_handle]
+deploy:
+  endpoint: https://deploy.example.com/hooks/site
+  method: POST
+  authHeader: Bearer PLACEHOLDER_TOKEN

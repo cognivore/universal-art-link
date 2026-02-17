@@ -1,0 +1,27 @@
+[Unit]
+Description=UAL v2 Realtime (WebSocket) Server
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=ual
+Group=ual
+WorkingDirectory=/opt/ual-v2/code
+EnvironmentFile=/opt/ual-v2/.env
+Environment=PORT=4181
+ExecStart=/usr/bin/node services/realtime/dist/index.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ual-v2-realtime
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/ual-v2/data
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

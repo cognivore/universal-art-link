@@ -1,0 +1,29 @@
+{
+  "name": "@ual/worker",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc --build",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@ual/core": "workspace:*",
+    "@ual/crdt": "workspace:*",
+    "@ual/provisioning": "workspace:*",
+    "@ual/renderer": "workspace:*",
+    "@ual/storage": "workspace:*",
+    "pg-boss": "^10.1.0",
+    "pino": "^9.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

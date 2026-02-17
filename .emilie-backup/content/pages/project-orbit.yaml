@@ -1,0 +1,78 @@
+slug: /signature-course
+title: "[Signature Course Name, e.g., 'Foundations of Wagashi']"
+layout: project
+sections:
+  - type: single-project
+    title: "[Course Name, e.g., 'Foundations of Wagashi']"
+    role: "[Course format, e.g., '4-Week Intensive Workshop']"
+    year: "[Season/dates, e.g., 'Spring 2026 — Enrollment Open']"
+    tags:
+      - "[Skill tag, e.g., 'Beginner-Friendly']"
+      - "[Content tag, e.g., 'Nerikiri & Namagashi']"
+      - "[Format tag, e.g., 'Hands-On']"
+    credits:
+      - "[Credit line, e.g., 'All ingredients sourced from [supplier]']"
+      - "[Credit line, e.g., 'Class size: 6 students maximum']"
+      - "[Credit line, e.g., 'Location: [Your Studio], [City]']"
+    blocks:
+      - type: text
+        title: About This Course
+        body: |
+          [Describe what students will learn and experience in this signature course. Be specific about outcomes:
+
+          e.g., 'Over four Saturday sessions, you'll learn the foundational techniques of Japanese wagashi — the seasonal confections served with tea. We'll cover nerikiri (molded bean paste sweets), namagashi (fresh confections), and the principles of seasonal design that guide every wagashi artisan.
+
+          By the end of the course, you'll have made over 20 different wagashi, understand how to read the seasonal calendar, and have the skills to continue practicing at home. No prior experience required — just patience and an appreciation for slow, deliberate work.']
+      - type: image
+        media:
+          src: /assets/project-orbit-1.svg
+          alt: "[Describe: e.g., 'Array of seasonal wagashi on individual plates']"
+        caption: "[Caption: e.g., 'Each week focuses on a different season — here, autumn maple and chrysanthemum designs.']"
+        bleed: true
+      - type: text
+        title: What We'll Cover
+        body: |
+          [Break down the curriculum week by week or topic by topic:
+
+          e.g., '**Week 1: Spring** — Sakura mochi, cherry blossom nerikiri, understanding the spring palette.
+
+          **Week 2: Summer** — Mizu yokan, hydrangea designs, working with agar and transparency.
+
+          **Week 3: Autumn** — Chestnut variations, maple leaf shapes, kuri kinton.
+
+          **Week 4: Winter** — Tsubaki (camellia) nerikiri, year-end confections, and your final project.
+
+          Each session includes demonstration, hands-on practice, and pastries to take home.']
+      - type: image-grid
+        items:
+          - media:
+              src: /assets/project-orbit-2.svg
+              alt: "[Describe: e.g., 'Hands shaping nerikiri with wooden tools']"
+            caption: "[Caption: e.g., 'Learning the triangular spatula technique for petal edges.']"
+          - media:
+              src: /assets/project-orbit-3.svg
+              alt: "[Describe: e.g., 'Finished wagashi arranged on a black tray']"
+            caption: "[Caption: e.g., 'Student work from the autumn session.']"
+      - type: quote
+        quote: "[A testimonial from a past student, or a quote that captures the spirit of the course: e.g., 'I came expecting a cooking class and left with a meditation practice. The precision required completely rewired how I think about making things.']"
+        cite: "[Student name]"
+        role: "[Optional: e.g., 'Spring 2025 cohort']"
+      - type: text
+        title: Details & Enrollment
+        body: |
+          [Provide practical enrollment information:
+
+          e.g., '**Schedule:** Four consecutive Saturdays, 10am-2pm
+
+          **Investment:** $[price] for the full course (includes all materials, recipes, and pastries to take home)
+
+          **Prerequisites:** None — beginners welcome
+
+          **What to bring:** An apron and containers for taking pastries home. All tools and ingredients provided.
+
+          **Cancellation policy:** Full refund up to 2 weeks before start date; 50% refund up to 1 week before; no refunds within 7 days.
+
+          To enroll, use the contact form below or email [your-email]@[domain].com with "Wagashi Course" in the subject line. I'll send you available dates and payment instructions.']
+      - type: embed
+        label: "[Optional: e.g., 'Course Preview Video']"
+        html: "[If you have a video introduction, embed it here. Otherwise, remove this block. e.g., '<div class=\"iframe-wrapper\"><iframe src=\"https://player.vimeo.com/video/[your-video-id]\" frameborder=\"0\" allowfullscreen></iframe></div>']"

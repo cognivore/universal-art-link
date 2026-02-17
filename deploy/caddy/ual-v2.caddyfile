@@ -1,0 +1,40 @@
+# UAL v2 — new.okashi-school.com
+# Append this block to /etc/caddy/Caddyfile (do NOT replace existing blocks)
+
+new.okashi-school.com {
+    # Admin SPA (built Vite output)
+    handle /admin/* {
+        uri strip_prefix /admin
+        root * /opt/ual-v2/code/apps/admin-web/dist
+        try_files {path} /index.html
+        file_server
+    }
+
+    # API proxy
+    handle /api/* {
+        reverse_proxy 127.0.0.1:4180
+    }
+
+    # WebSocket proxy for CRDT sync
+    handle /ws/* {
+        reverse_proxy 127.0.0.1:4181
+    }
+
+    # Published site (static HTML from atomic-symlink releases)
+    handle {
+        root * /opt/ual-v2/releases/{http.request.host}/current
+        try_files {path} {path}/index.html /index.html
+        file_server
+    }
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output file /var/log/caddy/ual-v2-access.log
+        format json
+    }
+}
